@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QUICLAB — Multi-Protocol Network & QUIC Workbench</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/modal.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+</head>
+<body>
+  <div id="app-root">
+    
+    <!-- TOP NAVBAR EXECUTION CONTROLS -->
+    <header class="top-navbar">
+      <div class="brand-title">
+        <span>QUICLAB</span>
+        <span class="brand-badge">RESEARCH v1.0</span>
+      </div>
+
+      <div class="top-controls">
+        <div class="control-group">
+          <label for="select-env">Environment:</label>
+          <select id="select-env">
+            <option value="dev-env">Development</option>
+            <option value="staging-env">Staging Lab</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="select-execution">Execution:</label>
+          <select id="select-execution">
+            <option value="Local">Local FastAPI Engine</option>
+            <option value="QUICLAB Agent">QUICLAB Agent</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="select-network">Network:</label>
+          <select id="select-network">
+            <option value="Existing Network">Existing Network</option>
+            <option value="Configured Proxy">Configured Proxy</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="select-proxy">Proxy:</label>
+          <select id="select-proxy">
+            <option value="direct-profile">Direct (No Proxy)</option>
+            <option value="corp-socks5">Corporate SOCKS5 Proxy</option>
+            <option value="corp-http">Corporate HTTP Proxy</option>
+          </select>
+        </div>
+
+        <div class="status-pill connected" id="agent-status-pill">
+          <span class="status-dot"></span>
+          <span id="agent-status-text">Agent: 127.0.0.1:9000 (Connected)</span>
+        </div>
+
+        <button class="btn-secondary" id="btn-new-request">+ New Request</button>
+        <button class="btn-run" id="btn-run-request">▶ Run Request</button>
+      </div>
+    </header>
+
+    <!-- WORKBENCH BODY: SIDEBAR + MAIN WORKSPACE -->
+    <div class="workbench-body">
+      
+      <!-- LEFT SIDEBAR -->
+      <nav class="sidebar">
+        <div class="nav-item" data-tab="overview">
+          <span>👋 Overview & Guide</span>
+        </div>
+        <div class="nav-item active" data-tab="builder">
+          <span>⚡ Request Builder</span>
+        </div>
+        <div class="nav-item" data-tab="quic-inspector">
+          <span>📦 QUIC Packet Inspector</span>
+        </div>
+        <div class="nav-item" data-tab="stream-tree">
+          <span>🌳 QUIC Stream Visualizer</span>
+        </div>
+        <div class="nav-item" data-tab="adv-quic">
+          <span>🔬 Advanced QUIC Research</span>
+        </div>
+        <div class="nav-item" data-tab="quic-injector-studio">
+          <span>💉 QUIC Frame Injector</span>
+        </div>
+        <div class="nav-item" data-tab="quic-perf-studio">
+          <span>⚡ QUIC Performance Optimizer</span>
+        </div>
+        <div class="nav-item" data-tab="correlation">
+          <span>🔗 Cross-Layer Correlation</span>
+        </div>
+        <div class="nav-item" data-tab="network-lab">
+          <span>🧪 Network Laboratory</span>
+        </div>
+        <div class="nav-item" data-tab="mesh-topology">
+          <span>🌐 Multi-Agent Edge Mesh</span>
+        </div>
+        <div class="nav-item" data-tab="openssl-studio">
+          <span>🔒 OpenSSL TLS Studio</span>
+        </div>
+        <div class="nav-item" data-tab="proxy-manager">
+          <span>🛡️ Proxy Profile Manager</span>
+        </div>
+        <div class="nav-item" data-tab="fuzzer">
+          <span>☣️ Security Fuzzer</span>
+        </div>
+        <div class="nav-item" data-tab="stress-runner">
+          <span>🚀 Stress Generator</span>
+        </div>
+        <div class="nav-item" data-tab="collections">
+          <span>📁 Collections Suite</span>
+        </div>
+        <div class="nav-item" data-tab="environments">
+          <span>🌐 Environments</span>
+        </div>
+        <div class="nav-item" data-tab="sessions">
+          <span>⏱️ Sessions History</span>
+        </div>
+        <div class="nav-item" data-tab="network-vis">
+          <span>🌐 Network Visualization</span>
+        </div>
+      </nav>
+
+      <!-- MAIN WORKSPACE -->
+      <main class="workspace">
+        
+        <!-- WORKSPACE TABS -->
+        <div class="workspace-tabs">
+          <div class="ws-tab active" id="tab-title-active">Active Request (HTTP/3)</div>
+          <div class="ws-tab" id="tab-route-effective">Effective Route Preview</div>
+        </div>
+
+        <!-- TAB CONTENT VIEW AREA -->
+        <div class="workspace-content" id="workspace-content-area">
+          
+          <!-- DYNAMIC REQUEST BUILDER VIEW (DEFAULT) -->
+          <div id="view-request-builder">
+            
+            <!-- QUICK GUIDANCE HELPER BANNER -->
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--text-secondary);">
+              <div>
+                <strong>💡 Quick Workflow:</strong> 
+                1. Select Protocol ➔ 2. Configure Host/Options ➔ 3. Select Execution/Proxy in Top Bar ➔ 4. Click <strong>▶ Run Request</strong>
+              </div>
+              <button class="btn-secondary" style="font-size: 10px; padding: 2px 6px;" onclick="document.querySelector('.nav-item[data-tab=\'overview\']').click()">Open Detailed User Guide</button>
+            </div>
+
+            <div class="protocol-bar">
+              <select id="select-protocol">
+                <option value="HTTP/1.1">HTTP/1.1 (Standard Web)</option>
+                <option value="HTTP/2">HTTP/2 (Multiplexed TCP)</option>
+                <option value="HTTP/3" selected>HTTP/3 (QUIC/UDP Web)</option>
+                <option value="QUIC">Raw QUIC (RFC 9000)</option>
+                <option value="RAW TCP">Raw TCP Socket</option>
+                <option value="RAW UDP">Raw UDP Datagram</option>
+                <option value="WEBSOCKET">WebSocket (WS/WSS)</option>
+                <option value="FTP">FTP File Transfer</option>
+                <option value="FTPS">FTPS (Explicit TLS)</option>
+                <option value="SSH">SSH Shell Session</option>
+                <option value="SFTP">SFTP Subsystem</option>
+                <option value="DNS">DNS Resolver (A, AAAA, MX)</option>
+                <option value="RTP">RTP Media Stream</option>
+                <option value="MOQ">Media over QUIC (MoQ)</option>
+                <option value="WEBTRANSPORT">WebTransport</option>
+                <option value="OPENSSL">OpenSSL Diagnostic</option>
+              </select>
+
+              <select id="select-method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+                <option value="HEAD">HEAD</option>
+                <option value="OPTIONS">OPTIONS</option>
+              </select>
+
+              <input type="text" id="input-url" class="url-input" value="https://cloudflare-quic.com/" placeholder="Enter target URL or endpoint (e.g., https://target.com/ or 10.0.0.1:443)">
+            </div>
+
+            <!-- DYNAMIC FORM OPTIONS PLACEHOLDER -->
+            <div id="dynamic-form-fields" style="background: var(--bg-surface); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px;">
+              <!-- JavaScript Populates Dynamic Controls Here -->
+            </div>
+
+            <!-- EFFECTIVE ROUTE DIAGRAM PREVIEW -->
+            <div style="margin-bottom: 16px;">
+              <label style="font-weight: 600; color: var(--text-secondary); font-size: 11px;">EFFECTIVE ROUTE PREVIEW:</label>
+              <div class="route-box" id="effective-route-preview">
+                UI ↓ Execution (Local FastAPI) ↓ Route (Existing Network) ↓ Transport (HTTP/3) ↓ Target (cloudflare-quic.com:443)
+              </div>
+            </div>
+
+            <!-- RESPONSE SECTION WITH HTML PREVIEW TAB -->
+            <div class="response-container">
+              <div class="response-header">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <strong style="color: var(--text-primary); font-size: 13px;">Transaction Response</strong>
+                  <span id="response-status-badge" class="badge short">Ready to Execute</span>
+                  
+                  <!-- Response View Toggle -->
+                  <div style="display: flex; gap: 4px; background: var(--bg-muted); padding: 2px; border-radius: 4px; margin-left: 10px;">
+                    <button id="btn-resp-json" class="btn-secondary" style="font-size: 10px; padding: 2px 8px; background: #FFF; font-weight: 600;">JSON / Raw</button>
+                    <button id="btn-resp-html" class="btn-secondary" style="font-size: 10px; padding: 2px 8px;">🌐 Web View (Rendered HTML)</button>
+                  </div>
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-muted);" id="response-rtt-text">
+                  RTT: -- ms | Size: -- bytes
+                </div>
+              </div>
+
+              <!-- RAW JSON VIEW -->
+              <div class="response-body-view" id="response-body-content">
+                Click "Run Request" above to execute multi-protocol transaction through the FastAPI engine.
+              </div>
+
+              <!-- RENDERED WEB VIEW IFRAME -->
+              <div id="response-html-preview" style="display: none; height: 420px; background: #FFF;">
+                <iframe id="html-preview-frame" style="width: 100%; height: 100%; border: none;"></iframe>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- OTHER VIEWS (HIDDEN BY DEFAULT, TOGGLED BY JS) -->
+          <div id="view-other-container" style="display: none;"></div>
+
+        </div>
+
+      </main>
+
+    </div>
+
+    <!-- BOTTOM STATUS BAR -->
+    <footer class="bottom-statusbar">
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <span class="status-dot" style="background-color: var(--status-green);"></span>
+        <span id="status-footer-text">QUICLAB FastAPI Controller Ready</span>
+      </div>
+      
+      <div class="statusbar-metrics">
+        <div class="metric-item">RTT: <span class="metric-value" id="metrics-rtt">21.4 ms</span></div>
+        <div class="metric-item">Throughput: <span class="metric-value" id="metrics-throughput">84.2 Mbps</span></div>
+        <div class="metric-item">Packets: <span class="metric-value" id="metrics-packets">1,420</span></div>
+        <div class="metric-item">Streams: <span class="metric-value" id="metrics-streams">3 active</span></div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- SCRIPT INITIALIZATION -->
+  <script src="js/api_client.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/ui/builder.js"></script>
+  <script src="js/ui/quic_inspector.js"></script>
+  <script src="js/ui/stream_tree.js"></script>
+  <script src="js/ui/adv_quic_ui.js"></script>
+  <script src="js/ui/quic_injector_ui.js"></script>
+  <script src="js/ui/quic_perf_ui.js"></script>
+  <script src="js/ui/correlation.js"></script>
+  <script src="js/ui/proxy_ui.js"></script>
+  <script src="js/ui/lab_ui.js"></script>
+  <script src="js/ui/mesh_ui.js"></script>
+  <script src="js/ui/openssl_ui.js"></script>
+  <script src="js/ui/sessions_ui.js"></script>
+  <script src="js/ui/env_ui.js"></script>
+  <script src="js/ui/collections_ui.js"></script>
+  <script src="js/ui/effective_route_ui.js"></script>
+  <script src="js/ui/network_vis_ui.js"></script>
+  <script src="js/ui/overview_ui.js"></script>
+  <script src="js/ui/fuzzer_ui.js"></script>
+  <script src="js/ui/stress_ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

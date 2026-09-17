@@ -1,0 +1,118 @@
+/* QUICLAB Enterprise Research Theme System */
+:root {
+  --bg-app: #FFFFFF;
+  --bg-surface: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --bg-muted: #F1F5F9;
+  --bg-hover: #E2E8F0;
+  
+  --border-color: #E2E8F0;
+  --border-dark: #CBD5E1;
+  
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  
+  --primary-blue: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-light: #EFF6FF;
+  
+  --status-green: #16A34A;
+  --status-green-bg: #DCFCE7;
+  --status-red: #DC2626;
+  --status-red-bg: #FEE2E2;
+  --status-amber: #D97706;
+  --status-amber-bg: #FEF3C7;
+  --status-blue: #0284C7;
+  --status-blue-bg: #E0F2FE;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  font-size: 12px;
+}
+
+button.btn-primary {
+  background-color: var(--primary-blue);
+  color: #FFFFFF;
+}
+button.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+button.btn-secondary {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+button.btn-secondary:hover {
+  background-color: var(--bg-muted);
+}
+
+button.btn-run {
+  background-color: var(--status-green);
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 6px 16px;
+}
+button.btn-run:hover {
+  background-color: #15803D;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: none;
+  background-color: #FFFFFF;
+  color: var(--text-primary);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}
