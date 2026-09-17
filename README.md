@@ -1,4 +1,4 @@
-# 🚀 QUICLAB — Enterprise Multi-Protocol Network, QUIC & Security Experimentation Workbench
+# 🚀 QUICLAB —Multi-Protocol Network, QUIC & Security Experimentation Workbench
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
@@ -176,7 +176,7 @@ Access the Effective Route Inspector by clicking the **Effective Route Preview**
 custom_postman/
 ├── main.py                     # FastAPI application entry point & static file routing
 ├── requirements.txt            # Python dependencies (FastAPI, uvicorn, httpx, etc.)
-├── README.md                   # Enterprise documentation
+├── README.md                   # documentation
 ├── app/
 │   ├── api/
 │   │   └── routes.py           # REST API endpoints for all protocols & research tools
@@ -200,7 +200,7 @@ custom_postman/
 │   └── fuzzing/
 │       └── fuzzer.py           # QUIC & protocol security fuzzing engine
 └── frontend/
-    ├── index.html              # Enterprise Workbench UI layout
+    ├── index.html              # Workbench UI layout
     ├── css/                    # Main, components, and modal stylesheets
     └── js/
         ├── api_client.js       # Unified REST & WebSockets client with offline fallbacks
