@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUICLAB — a workbench for QUIC, HTTP/3 and TLS 1.3</title>
+
+<meta name="description" content="QUICLAB is a research-grade workbench for QUIC and HTTP/3. Inspect streams and frames in 3D, inject custom frames and faults, run a 15-point TLS audit, and benchmark congestion control across 16+ protocols.">
+<meta name="keywords" content="QUIC, HTTP/3, RFC 9000, TLS 1.3, OpenSSL audit, frame injection, QPACK, BBR, WebTransport, MoQ, protocol analyzer">
+<meta property="og:title" content="QUICLAB — a workbench for QUIC, HTTP/3 and TLS 1.3">
+<meta property="og:description" content="An API client shows you a response body. QUICLAB shows you the connection: streams, frames, keys, congestion windows and path migration — live, in 3D.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 26 26%27%3E%3Cpath d=%27M13 2 23 7.5v11L13 24 3 18.5v-11L13 2Z%27 fill=%27none%27 stroke=%27%230E9E92%27 stroke-width=%271.6%27/%3E%3Ccircle cx=%2713%27 cy=%2713%27 r=%273%27 fill=%27%23B8730C%27/%3E%3C/svg%3E">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication",
+ "name":"QUICLAB","applicationCategory":"DeveloperApplication",
+ "operatingSystem":"Windows, macOS, Linux",
+ "description":"A research-grade workbench for QUIC, HTTP/3 and TLS 1.3 with 15 protocol research instruments, frame and fault injection and a 15-point TLS audit.",
+ "codeRepository":"https://github.com/sripad2020/PosTQuic",
+ "author":{"@type":"Person","name":"Sripad Karthik","email":"sripadkarthik@gmail.com"}}
+</script>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================================
+   QUICLAB — light "lab bench" design system
+   Colour is a legend, not decoration: every hue maps to a
+   protocol object the product actually reports on.
+   =========================================================== */
+:root{
+  --bg:#FFFFFF;
+  --paper:#F5F8FB;
+  --panel:#FFFFFF;
+
+  --line:rgba(13,21,38,.10);
+  --line-2:rgba(13,21,38,.20);
+
+  --ink:#0D1526;
+  --ink-2:#4A5A72;
+  --ink-3:#7F8EA5;
+
+  --quic:#0E9E92;   /* QUIC / UDP datagram   */
+  --h3:#5B45D6;     /* HTTP/3 stream         */
+  --tls:#B8730C;    /* TLS 1.3 · CRYPTO      */
+  --fault:#D6335A;  /* loss · fault · reset  */
+  --ok:#17824B;     /* verified              */
+
+  --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+
+  --r:14px;
+  --pad:clamp(20px,5vw,64px);
+  --maxw:1240px;
+  --sh:0 1px 2px rgba(13,21,38,.04), 0 12px 28px -18px rgba(13,21,38,.28);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.6;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* faint measurement grid — this is a lab bench */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(13,21,38,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(13,21,38,.045) 1px,transparent 1px);
+  background-size:64px 64px;
+  mask-image:radial-gradient(ellipse 110% 62% at 50% 0%,#000 25%,transparent 76%);
+  -webkit-mask-image:radial-gradient(ellipse 110% 62% at 50% 0%,#000 25%,transparent 76%);
+}
+main,header,footer{position:relative;z-index:1}
+
+a{color:inherit}
+::selection{background:rgba(14,158,146,.20)}
+:focus-visible{outline:2px solid var(--quic);outline-offset:3px;border-radius:6px}
+
+h1,h2,h3{font-weight:600;letter-spacing:-.025em;line-height:1.08}
+h1{font-size:clamp(36px,5.9vw,70px)}
+h2{font-size:clamp(27px,3.7vw,44px);line-height:1.12}
+h3{font-size:clamp(17px,1.6vw,20px);letter-spacing:-.01em;line-height:1.3}
+p{color:var(--ink-2);max-width:66ch}
+.lead{font-size:clamp(16px,1.6vw,19px);color:var(--ink-2)}
+
+/* section marker carries a real RFC citation, not a decorative eyebrow */
+.rfc{
+  font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  letter-spacing:.02em;display:inline-block;margin-bottom:14px;
+  border-left:2px solid var(--line-2);padding-left:10px;
+}
+.rfc b{color:var(--quic);font-weight:500}
+
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad)}
+section{padding:clamp(66px,8.5vw,118px) 0;position:relative}
+.tint{background:var(--paper);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sec-head{max-width:760px;margin-bottom:clamp(32px,4.5vw,54px)}
+.sec-head p{margin-top:16px}
+
+/* ---------- header ---------- */
+.topbar{
+  position:sticky;top:0;z-index:60;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  background:rgba(255,255,255,.88);
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{display:flex;align-items:center;gap:26px;height:66px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;font-weight:600;letter-spacing:-.02em;font-size:18px}
+.brand span i{color:var(--quic);font-style:normal}
+.nav{display:flex;gap:24px;margin-left:auto}
+.nav a{font-size:14px;color:var(--ink-2);text-decoration:none;padding:6px 0;position:relative}
+.nav a:hover{color:var(--ink)}
+.nav a::after{content:'';position:absolute;left:0;bottom:0;height:1px;width:0;background:var(--quic);transition:width .22s ease}
+.nav a:hover::after{width:100%}
+.topbar .cta-row{display:flex;gap:10px;align-items:center}
+
+.btn{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--sans);font-size:14px;font-weight:500;
+  padding:11px 18px;border-radius:10px;text-decoration:none;cursor:pointer;
+  border:1px solid transparent;transition:transform .18s ease,background .2s ease,border-color .2s ease;
+}
+.btn-primary{background:var(--ink);color:#fff;font-weight:600}
+.btn-primary:hover{transform:translateY(-2px);background:#1b2942}
+.btn-ghost{border-color:var(--line-2);color:var(--ink);background:#fff}
+.btn-ghost:hover{border-color:var(--quic);color:var(--quic)}
+.btn-lg{padding:15px 26px;font-size:15px;border-radius:11px}
+
+/* ---------- hero ---------- */
+.hero{padding-top:clamp(44px,6vw,74px);padding-bottom:clamp(38px,5vw,66px)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.04fr);gap:clamp(30px,4vw,58px);align-items:center}
+.hero h1{margin-bottom:22px}
+.hero h1 em{font-style:normal;
+  background:linear-gradient(100deg,var(--quic),var(--h3) 62%,var(--tls));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .lead{max-width:56ch}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin:30px 0 26px}
+.spec-strip{display:flex;flex-wrap:wrap;gap:8px}
+.spec{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  border:1px solid var(--line);border-radius:7px;padding:5px 9px;background:var(--paper)}
+
+/* ---------- viewport (3d canvas frame) ---------- */
+.viewport{
+  position:relative;border:1px solid var(--line);border-radius:var(--r);
+  background:linear-gradient(180deg,#FFFFFF,#F7FAFC);
+  overflow:hidden;box-shadow:var(--sh);
+}
+.viewport-bar{
+  display:flex;align-items:center;gap:10px;padding:9px 14px;
+  border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--ink-3);
+  background:rgba(13,21,38,.015);
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--quic)}
+.viewport-bar .right{margin-left:auto}
+canvas.stage{display:block;width:100%;height:100%;touch-action:pan-y}
+.stage-wrap{position:relative;height:clamp(300px,42vw,428px);cursor:grab;touch-action:pan-y}
+.stage-wrap:active{cursor:grabbing}
+.drag-hint{
+  position:absolute;right:12px;bottom:12px;font-family:var(--mono);font-size:10.5px;
+  color:var(--ink-3);border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+  background:rgba(255,255,255,.86);pointer-events:none;transition:opacity .4s ease;
+}
+
+.rail{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px;border-top:1px solid var(--line);background:rgba(13,21,38,.015)}
+.chip{
+  font-family:var(--mono);font-size:12px;color:var(--ink-2);cursor:pointer;
+  border:1px solid var(--line-2);background:#fff;border-radius:8px;padding:8px 12px;
+  transition:all .18s ease;display:inline-flex;align-items:center;gap:7px;
+}
+.chip:hover{color:var(--ink);border-color:var(--ink-3)}
+.chip.active{background:rgba(14,158,146,.10);border-color:var(--quic);color:var(--quic)}
+.chip .sw{width:8px;height:8px;border-radius:2px;background:currentColor}
+
+.readout{
+  font-family:var(--mono);font-size:11.5px;line-height:1.85;color:var(--ink-2);
+  padding:12px 14px;border-top:1px solid var(--line);height:112px;overflow:hidden;background:#FBFDFE;
+}
+.readout div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t{color:var(--ink-3)}
+.c-quic{color:var(--quic)}.c-h3{color:var(--h3)}.c-tls{color:var(--tls)}.c-fault{color:var(--fault)}.c-ok{color:var(--ok)}
+.kv{color:var(--ink-3)}
+
+/* ---------- legend ---------- */
+.legend{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;background:var(--paper)}
+.legend-in{display:flex;flex-wrap:wrap;gap:10px 30px;align-items:center}
+.legend-item{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.legend-item b{width:22px;height:3px;border-radius:2px;display:block}
+
+/* ---------- cards ---------- */
+.grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:18px}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.card{border:1px solid var(--line);border-radius:var(--r);padding:26px;background:#fff;position:relative;overflow:hidden;box-shadow:var(--sh)}
+.card h3{margin-bottom:10px}
+.card p{font-size:14.5px;line-height:1.66}
+.card .tag{font-family:var(--mono);font-size:11px;color:var(--ink-3);display:block;margin-bottom:14px}
+.card::before{content:'';position:absolute;left:0;top:0;height:3px;width:100%;background:var(--accent,var(--line-2))}
+.pa{margin-top:16px;border-top:1px dashed var(--line-2);padding-top:14px}
+.pa span{font-family:var(--mono);font-size:11px;color:var(--ink-3);display:block;margin-bottom:5px}
+.pa p{font-size:14px;color:var(--ink)}
+
+/* ---------- 15 instruments carousel ---------- */
+.inst-stage{height:clamp(330px,44vw,470px)}
+.inst-nums{display:flex;flex-wrap:wrap;gap:6px;padding:14px;border-top:1px solid var(--line);background:rgba(13,21,38,.015)}
+.num-btn{
+  font-family:var(--mono);font-size:11.5px;width:38px;height:32px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line-2);background:#fff;color:var(--ink-3);transition:all .16s ease;
+}
+.num-btn:hover{color:var(--ink);border-color:var(--ink-3)}
+.num-btn[aria-current="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.inst-nav{margin-left:auto;display:flex;gap:6px}
+.inst-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border-top:1px solid var(--line)}
+.inst-copy{padding:26px}
+.inst-copy .rfc{margin-bottom:10px}
+.inst-copy h3{margin-bottom:12px}
+.inst-copy p{font-size:14.5px}
+.inst-code{padding:24px 26px;border-left:1px solid var(--line);background:#FBFDFE;font-family:var(--mono);font-size:12.5px;line-height:1.9;color:var(--ink-2);overflow-x:auto}
+.inst-code pre{white-space:pre-wrap;word-break:break-word}
+
+/* ---------- handshake flights (CSS 3D) ---------- */
+.flights{perspective:1400px;display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.flight{
+  transform-style:preserve-3d;border:1px solid var(--line-2);border-radius:11px;
+  padding:14px 18px;background:#fff;display:flex;align-items:center;gap:14px;cursor:default;
+  transform:rotateX(9deg);transition:transform .35s cubic-bezier(.2,.8,.3,1),border-color .25s ease,box-shadow .3s ease;
+}
+.flight:hover,.flight:focus-visible{transform:rotateX(0deg) translateZ(30px);border-color:var(--tls);box-shadow:0 16px 30px -20px rgba(13,21,38,.5)}
+.flight .n{font-family:var(--mono);font-size:11px;color:var(--ink-3);min-width:26px}
+.flight .nm{font-family:var(--mono);font-size:13px;color:var(--tls)}
+.flight .dsc{font-size:13.5px;color:var(--ink-3);margin-left:auto;text-align:right}
+
+/* ---------- terminal ---------- */
+.terminal{border:1px solid var(--line);border-radius:var(--r);background:#fff;overflow:hidden;box-shadow:var(--sh)}
+.term-body{padding:20px 22px;font-family:var(--mono);font-size:12.5px;line-height:1.95;color:var(--ink-2);overflow-x:auto;background:#FBFDFE}
+.term-body pre{white-space:pre-wrap;word-break:break-word}
+
+/* ---------- comparison ---------- */
+.cmp{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+.cmp th,.cmp td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line)}
+.cmp thead th{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-weight:500;background:var(--paper)}
+.cmp thead th:last-child{color:var(--quic)}
+.cmp td:first-child{color:var(--ink)}
+.cmp td{color:var(--ink-3)}
+.cmp td:last-child{color:var(--ink);background:rgba(14,158,146,.06)}
+.cmp tbody tr:last-child td{border-bottom:0}
+.tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+
+/* ---------- calculator ---------- */
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;align-items:stretch}
+.sliders{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:26px;box-shadow:var(--sh)}
+.slider-row{margin-bottom:26px}
+.slider-row label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12.5px;color:var(--ink-3);margin-bottom:12px}
+.slider-row label b{font-weight:500;color:var(--quic)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--quic) var(--fill,50%),rgba(13,21,38,.14) var(--fill,50%));outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+  background:#fff;border:2px solid var(--quic);box-shadow:0 2px 6px rgba(13,21,38,.2);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:2px solid var(--quic);cursor:pointer}
+.result-row{display:flex;gap:26px;border-top:1px solid var(--line);padding-top:20px}
+.result-row div{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.result-row div b{display:block;font-size:24px;font-weight:500;margin-top:6px;letter-spacing:-.02em}
+
+/* ---------- quickstart ---------- */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.step{border:1px solid var(--line);border-radius:var(--r);padding:22px;background:#fff;box-shadow:var(--sh)}
+.step .num{font-family:var(--mono);font-size:11px;color:var(--quic);margin-bottom:12px;display:block}
+.step code,code.inline{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--paper);
+  border:1px solid var(--line);border-radius:7px;padding:9px 11px;display:block;margin-top:12px;overflow-x:auto;white-space:pre}
+
+/* ---------- contact ---------- */
+.contact{border:1px solid var(--line);border-radius:18px;padding:clamp(34px,5vw,60px);text-align:center;
+  background:#fff;box-shadow:var(--sh)}
+.contact p{margin:16px auto 28px}
+.contact .mail{font-family:var(--mono);font-size:clamp(18px,3vw,26px);color:var(--ink);text-decoration:none;
+  border-bottom:2px solid var(--quic);padding-bottom:3px;display:inline-block}
+.contact .mail:hover{color:var(--quic)}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);padding:38px 0 52px;background:var(--paper)}
+.foot{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.foot a{color:var(--ink-3);text-decoration:none}
+.foot a:hover{color:var(--quic)}
+
+@media (max-width:960px){
+  .hero-grid,.calc,.inst-detail{grid-template-columns:1fr}
+  .inst-code{border-left:0;border-top:1px solid var(--line)}
+  .nav{display:none}
+}
+@media (max-width:560px){
+  .topbar-in{height:60px;gap:12px}
+  .result-row{flex-wrap:wrap;gap:16px}
+  .btn{padding:10px 15px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition-duration:.001ms!important}
+  html{scroll-behavior:auto}
+}
+/* ===========================================================
+   Production layer — progress, reveal, stat band, nav, panel
+   =========================================================== */
+.skip{position:absolute;left:-9999px;top:0;background:var(--ink);color:#fff;padding:10px 16px;border-radius:0 0 8px 0;z-index:200;font-size:14px}
+.skip:focus{left:0}
+
+/* scroll progress */
+.progress{position:fixed;top:0;left:0;height:2px;width:100%;transform-origin:0 50%;transform:scaleX(0);z-index:90;
+  background:linear-gradient(90deg,var(--quic),var(--h3) 55%,var(--tls));will-change:transform}
+
+/* nav active state */
+.nav a.on{color:var(--ink)}
+.nav a.on::after{width:100%}
+
+/* mobile nav */
+.nav-toggle{display:none;width:38px;height:38px;border:1px solid var(--line-2);background:#fff;border-radius:9px;cursor:pointer;
+  align-items:center;justify-content:center;flex-direction:column;gap:4px}
+.nav-toggle span{display:block;width:16px;height:1.5px;background:var(--ink);transition:transform .25s ease,opacity .2s ease}
+.nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(5.5px) rotate(45deg)}
+.nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+.nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg)}
+
+/* hero ambience — kept faint so the page still reads as white */
+.hero::before{content:'';position:absolute;inset:-10% -20% auto -20%;height:520px;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(520px 300px at 76% 18%,rgba(91,69,214,.10),transparent 65%),
+    radial-gradient(460px 280px at 14% 8%,rgba(14,158,146,.10),transparent 65%),
+    radial-gradient(420px 260px at 52% 82%,rgba(184,115,12,.06),transparent 65%);
+  filter:blur(6px)}
+
+/* stat band */
+.stats{border-bottom:1px solid var(--line);background:#fff}
+.stats-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px;background:var(--line)}
+.stat{background:#fff;padding:26px 22px}
+.stat b{display:block;font-size:clamp(28px,3.4vw,40px);font-weight:600;letter-spacing:-.03em;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--ink)}
+.stat span{display:block;margin-top:9px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.stat i{font-style:normal;color:var(--quic)}
+
+/* scroll reveal */
+.rv{opacity:0;transform:translateY(16px);transition:opacity .6s cubic-bezier(.2,.7,.3,1),transform .6s cubic-bezier(.2,.7,.3,1)}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){ .rv{opacity:1;transform:none} }
+
+/* card + plan hover lift */
+.card,.step,.viewport{transition:transform .3s cubic-bezier(.2,.7,.3,1),box-shadow .3s ease,border-color .3s ease}
+.card:hover,.step:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(13,21,38,.05),0 22px 44px -26px rgba(13,21,38,.38)}
+
+/* copy button on code blocks */
+.codewrap{position:relative}
+.copy{position:absolute;top:10px;right:10px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+  border:1px solid var(--line-2);background:#fff;border-radius:7px;padding:4px 9px;cursor:pointer;opacity:0;
+  transition:opacity .2s ease,color .2s ease,border-color .2s ease}
+.codewrap:hover .copy,.copy:focus-visible{opacity:1}
+.copy:hover{color:var(--quic);border-color:var(--quic)}
+.copy.done{color:var(--ok);border-color:var(--ok);opacity:1}
+
+/* hidden operator panel */
+.opanel{position:fixed;right:18px;bottom:18px;z-index:120;width:290px;border:1px solid var(--line-2);border-radius:12px;
+  background:rgba(255,255,255,.97);backdrop-filter:blur(10px);box-shadow:0 24px 50px -22px rgba(13,21,38,.5);
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  opacity:0;transform:translateY(10px) scale(.98);pointer-events:none;transition:opacity .22s ease,transform .22s ease}
+.opanel.on{opacity:1;transform:none;pointer-events:auto}
+.opanel header{display:flex;align-items:center;gap:8px;padding:10px 13px;border-bottom:1px solid var(--line);color:var(--ink-3)}
+.opanel header b{font-weight:500;color:var(--ink)}
+.opanel .x{margin-left:auto;border:0;background:none;color:var(--ink-3);cursor:pointer;font-family:var(--mono);font-size:13px;line-height:1}
+.opanel dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;padding:13px}
+.opanel dt{color:var(--ink-3)}
+.opanel dd{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.opanel footer{padding:9px 13px;border-top:1px solid var(--line);color:var(--ink-3);font-size:10.5px}
+
+@media (max-width:960px){
+  .nav-toggle{display:flex}
+  .nav{display:none;position:absolute;top:66px;left:0;right:0;flex-direction:column;gap:0;margin:0;
+    background:#fff;border-bottom:1px solid var(--line);padding:8px var(--pad) 16px;box-shadow:var(--sh)}
+  .nav.open{display:flex}
+  .nav a{padding:12px 0;border-bottom:1px solid var(--line)}
+  .nav a::after{display:none}
+  .opanel{left:18px;right:18px;width:auto}
+}
+@media print{
+  .topbar,.progress,.rail,.opanel,.stage-wrap,.readout,.inst-nums{display:none!important}
+  body::before{display:none}
+  .viewport,.card,.step{box-shadow:none}
+}
+
+</style>
+</head>
+<body>
+<a class="skip" href="#top">Skip to content</a>
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <a class="brand" href="#top" aria-label="QUICLAB home">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <path d="M13 2 23 7.5v11L13 24 3 18.5v-11L13 2Z" stroke="#0E9E92" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M3 7.5 13 13l10-5.5M13 13v11" stroke="#5B45D6" stroke-width="1.1" opacity=".8"/>
+        <circle cx="13" cy="13" r="2" fill="#B8730C"/>
+      </svg>
+      <span>QUIC<i>LAB</i></span>
+    </a>
+    <nav class="nav" id="site-nav" aria-label="Sections">
+      <a href="#why">Why</a>
+      <a href="#instruments">15 instruments</a>
+      <a href="#field">In the field</a>
+      <a href="#compare">Comparison</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="cta-row">
+      <button class="nav-toggle" id="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span></span><span></span><span></span></button>
+      <a class="btn btn-ghost" href="https://github.com/sripad2020/PosTQuic" target="_blank" rel="noopener">Source</a>
+      <a class="btn btn-primary" href="#contact">Get in touch</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<noscript><div class="wrap" style="padding:18px 0"><p style="font-family:var(--mono);font-size:12.5px">JavaScript is off, so the interactive 3D models will not run. Everything written on this page is still readable.</p></div></noscript>
+
+<!-- ============================ HERO ============================ -->
+<section class="hero wrap">
+  <div class="hero-grid">
+    <div>
+      <p class="rfc"><b>RFC 9000</b> · QUIC transport &nbsp;/&nbsp; <b>RFC 9114</b> · HTTP/3</p>
+      <h1>An API client stops at the response body. <em>The connection is where the bugs live.</em></h1>
+      <p class="lead">QUICLAB is a workbench for the transport layer. It opens real QUIC and HTTP/3 connections, draws every stream and frame as it moves, lets you inject malformed frames on purpose, and tells you exactly how the server reacted.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="#instruments">See the 15 instruments</a>
+        <a class="btn btn-ghost btn-lg" href="#hero-stage">Try the live model</a>
+      </div>
+      <div class="spec-strip">
+        <span class="spec">16+ protocols</span>
+        <span class="spec">15 QUIC research tools</span>
+        <span class="spec">15-point TLS audit</span>
+        <span class="spec">SSLKEYLOGFILE export</span>
+        <span class="spec">Python 3.10+ · FastAPI</span>
+        <span class="spec">Runs on your machine</span>
+      </div>
+    </div>
+
+    <div class="viewport" id="hero-stage">
+      <div class="viewport-bar">
+        <span class="dot"></span> live model · TCP lane vs. QUIC multiplex
+        <span class="right">drag to orbit</span>
+      </div>
+      <div class="stage-wrap"><canvas class="stage" id="cv-hero"></canvas>
+        <span class="drag-hint" id="hero-hint">drag to rotate</span>
+      </div>
+      <div class="rail">
+        <button class="chip" id="btn-drop"><span class="sw" style="color:var(--fault)"></span>Drop a packet</button>
+        <button class="chip" id="btn-migrate"><span class="sw" style="color:var(--h3)"></span>Migrate path</button>
+        <button class="chip" id="btn-burst"><span class="sw" style="color:var(--tls)"></span>Open 8 streams</button>
+        <button class="chip" id="btn-reset">Reset</button>
+      </div>
+      <div class="readout" id="hero-log" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ LEGEND ============================ -->
+<div class="legend">
+  <div class="wrap legend-in">
+    <span class="legend-item" style="color:var(--ink-2)">Colour legend, used across this page and inside the app:</span>
+    <span class="legend-item"><b style="background:var(--quic)"></b> QUIC / UDP datagram</span>
+    <span class="legend-item"><b style="background:var(--h3)"></b> HTTP/3 stream</span>
+    <span class="legend-item"><b style="background:var(--tls)"></b> TLS 1.3 · CRYPTO frame</span>
+    <span class="legend-item"><b style="background:var(--fault)"></b> loss · fault · reset</span>
+    <span class="legend-item"><b style="background:var(--ok)"></b> verified</span>
+  </div>
+</div>
+
+<!-- ============================ STAT BAND ============================ -->
+<div class="stats">
+  <div class="wrap"><div class="stats-in">
+    <div class="stat"><b data-count="16">0</b><span>protocol adapters<br><i>one request builder</i></span></div>
+    <div class="stat"><b data-count="15">0</b><span>research instruments<br><i>one per clause of the spec</i></span></div>
+    <div class="stat"><b data-count="15">0</b><span>TLS checkpoints<br><i>audited per connection</i></span></div>
+    <div class="stat"><b data-count="9">0</b><span>RFCs implemented<br><i>9000 · 9001 · 9002 · 9114 …</i></span></div>
+    <div class="stat"><b data-count="0">0</b><span>bytes leaving your host<br><i>local SQLite, no cloud</i></span></div>
+  </div></div>
+</div>
+
+<!-- ============================ WHY ============================ -->
+<section id="why" class="wrap">
+  <div class="sec-head">
+    <p class="rfc"><b>Why this exists</b></p>
+    <h2>Three things you cannot see with a REST client</h2>
+    <p>The internet moved to UDP-based, multiplexed, zero-round-trip transport. The tooling did not. Each box below is a question engineers get asked in production and cannot answer with Postman, curl or Insomnia alone.</p>
+  </div>
+
+  <div class="grid-3">
+    <article class="card" style="--accent:var(--quic)">
+      <span class="tag">RFC 9000 2 · streams</span>
+      <h3>One slow object should not freeze the page</h3>
+      <p>Over TCP a single lost segment stalls every response sharing the socket — the browser has the bytes but the kernel will not hand them over. QUIC gives each object its own stream, so only that object waits.</p>
+      <div class="pa">
+        <span>What QUICLAB does</span>
+        <p>Replays the same request set over HTTP/1.1, HTTP/2 and HTTP/3 under identical loss and shows per-stream arrival, so you can prove head-of-line blocking is gone rather than assume it.</p>
+      </div>
+    </article>
+
+    <article class="card" style="--accent:var(--tls)">
+      <span class="tag">RFC 9001 · TLS 1.3 inside QUIC</span>
+      <h3>QUIC encrypts its own headers, so a capture goes dark</h3>
+      <p>Packet numbers, ACK ranges and frame types all sit inside the AEAD envelope. A capture without keys is noise, which is why so many transport bugs get closed as not reproducible.</p>
+      <div class="pa">
+        <span>What QUICLAB does</span>
+        <p>Runs a 15-point TLS audit — versions, ciphers, ALPN, SNI, chain, OCSP stapling, HSTS — animates each handshake flight, and exports a Wireshark key log so the capture decrypts.</p>
+      </div>
+    </article>
+
+    <article class="card" style="--accent:var(--fault)">
+      <span class="tag">RFC 9000 19 · frames</span>
+      <h3>You only trust a stack you have tried to break</h3>
+      <p>Servers behave well on the happy path. The interesting behaviour is a truncated connection ID, a packet-number gap, a corrupted key share, or an ACK range claiming packets you never sent.</p>
+      <div class="pa">
+        <span>What QUICLAB does</span>
+        <p>Hand-builds RESET_STREAM, STOP_SENDING, MAX_STREAM_DATA, DATAGRAM, PATH_CHALLENGE and CONNECTION_CLOSE frames, applies mutation vectors, and renders the exact bytes beside the server's reply.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ==================== 15 INSTRUMENTS (3D CAROUSEL) ==================== -->
+<section id="instruments" class="tint">
+  <div class="wrap sec-head">
+    <p class="rfc"><b>The research laboratory</b> · fifteen instruments, one per clause of the spec</p>
+    <h2>Every feature in the project, on one dial</h2>
+    <p>Spin the ring or pick a number. Each instrument opens a real connection to a real endpoint — the panel below shows what it measures, the route it calls and the shape of the result it hands back.</p>
+  </div>
+
+  <div class="wrap">
+    <div class="viewport">
+      <div class="viewport-bar">
+        <span class="dot"></span> instrument ring
+        <span class="right"><span id="inst-index">01</span> / 15 · drag to spin, click a plate</span>
+      </div>
+      <div class="stage-wrap inst-stage"><canvas class="stage" id="cv-ring"></canvas>
+        <span class="drag-hint" id="ring-hint">drag to spin · click to select</span>
+      </div>
+
+      <div class="inst-nums" id="inst-nums" role="tablist" aria-label="Research instruments">
+        <div class="inst-nav">
+          <button class="chip" id="inst-prev" aria-label="Previous instrument">←</button>
+          <button class="chip" id="inst-next" aria-label="Next instrument">→</button>
+        </div>
+      </div>
+
+      <div class="inst-detail">
+        <div class="inst-copy">
+          <p class="rfc" id="inst-rfc"></p>
+          <h3 id="inst-title"></h3>
+          <p id="inst-body"></p>
+        </div>
+        <div class="inst-code"><pre id="inst-pre"></pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ============================ HANDSHAKE + INJECTOR ============================ -->
+<section class="wrap">
+  <div class="sec-head">
+    <p class="rfc"><b>RFC 8446</b> · TLS 1.3 handshake &nbsp;/&nbsp; <b>RFC 9000 19</b> · frame injection</p>
+    <h2>The two studios around the lab</h2>
+  </div>
+  <div class="grid-2">
+    <div>
+      <h3 style="margin-bottom:8px">The handshake, flight by flight</h3>
+      <p style="font-size:14.5px;margin-bottom:18px">Hover a flight to lift it off the stack. In the app each one expands into the real record: cipher chosen, key share group, ALPN token, certificate chain, and the secrets written to your key log.</p>
+      <div class="flights" id="flights"></div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:8px">And the frames you build by hand</h3>
+      <p style="font-size:14.5px;margin-bottom:18px">The injector studio takes a frame type, stream ID, error code and payload, then optionally corrupts it on the way out. You watch the bytes leave and the server's answer come back.</p>
+      <div class="terminal">
+        <div class="viewport-bar"><span class="dot" style="background:var(--fault)"></span> POST /api/v1/quic/inject/fault</div>
+        <div class="term-body"><pre>{
+  <span class="c-h3">"target"</span>: <span class="c-quic">"https://edge.example.com:443"</span>,
+  <span class="c-h3">"frame"</span>: {
+    <span class="kv">"type"</span>:      <span class="c-quic">"RESET_STREAM"</span>,
+    <span class="kv">"stream_id"</span>: 4,
+    <span class="kv">"error_code"</span>:<span class="c-quic">"0x010c"</span>,
+    <span class="kv">"final_size"</span>:2048
+  },
+  <span class="c-h3">"mutation"</span>: <span class="c-fault">"PACKET_NUMBER_GAP"</span>
+}
+
+<span class="t">← 14 ms</span>
+  <span class="kv">server_action</span> : <span class="c-ok">CONNECTION_CLOSE 0x0a</span>
+  <span class="kv">frame_echo</span>    : 04 0c 01 08 00 …
+  <span class="kv">verdict</span>       : <span class="c-ok">defended — gap rejected per 13.2</span></pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FIELD ============================ -->
+<section id="field" class="tint">
+  <div class="wrap sec-head">
+    <p class="rfc"><b>In the field</b> · four situations this was built for</p>
+    <h2>What it looks like on a real network</h2>
+    <p>Pick a scenario. The model shows the client moving across paths while the connection survives — the case QUIC exists to handle, and the one that is hardest to reproduce in a lab.</p>
+  </div>
+
+  <div class="wrap">
+    <div class="viewport">
+      <div class="viewport-bar"><span class="dot" style="background:var(--h3)"></span> path model · the connection ID survives the move <span class="right">drag to spin the globe</span></div>
+      <div class="stage-wrap" style="height:clamp(300px,40vw,420px)"><canvas class="stage" id="cv-globe"></canvas></div>
+      <div class="rail" id="scenario-rail">
+        <button class="chip active" data-sc="0">Commute · Wi-Fi to 5G</button>
+        <button class="chip" data-sc="1">Live video over MoQ</button>
+        <button class="chip" data-sc="2">Trading edge · 4 ms budget</button>
+        <button class="chip" data-sc="3">CDN rollout audit</button>
+      </div>
+      <div style="padding:22px 22px 26px;border-top:1px solid var(--line);background:#fff">
+        <h3 id="sc-title" style="margin-bottom:10px"></h3>
+        <p id="sc-body" style="font-size:14.5px;max-width:78ch"></p>
+        <p class="rfc" style="margin:16px 0 0" id="sc-tools"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ COMPARE ============================ -->
+<section id="compare" class="wrap">
+  <div class="sec-head">
+    <p class="rfc"><b>What makes it different</b></p>
+    <h2>Postman is an HTTP client. This is a transport bench.</h2>
+    <p>The comparison is not about features in the abstract. It is about which layer the tool can reach, and whether it can still tell you something useful when the request fails below HTTP.</p>
+  </div>
+
+  <div class="grid-2" style="align-items:start">
+    <div class="tbl-scroll">
+      <table class="cmp">
+        <thead><tr><th>Capability</th><th>Postman / Insomnia</th><th>curl + Wireshark</th><th>QUICLAB</th></tr></thead>
+        <tbody>
+          <tr><td>HTTP/3 over real QUIC</td><td>Partial, no transport view</td><td>Yes, manual</td><td>Native, inspected</td></tr>
+          <tr><td>Per-stream frame timeline</td><td>No</td><td>Only with keys</td><td>Built in</td></tr>
+          <tr><td>Hand-built frame injection</td><td>No</td><td>No</td><td>Frame &amp; fault studio</td></tr>
+          <tr><td>TLS audit + key log export</td><td>No</td><td>Two tools, glued</td><td>One click</td></tr>
+          <tr><td>Proxy vs. protocol validation</td><td>Fails silently</td><td>Manual reasoning</td><td>Compatibility matrix</td></tr>
+          <tr><td>BBR v2 vs. Cubic benchmark</td><td>No</td><td>No</td><td>Charted per run</td></tr>
+          <tr><td>Connection migration test</td><td>No</td><td>Very hard</td><td>Scripted</td></tr>
+          <tr><td>MoQ, WebTransport, RTP</td><td>No</td><td>Partial</td><td>First-class adapters</td></tr>
+          <tr><td>Runs offline, on your host</td><td>Cloud account</td><td>Yes</td><td>Yes, local SQLite</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="viewport">
+      <div class="viewport-bar"><span class="dot" style="background:var(--tls)"></span> protocol adapters <span class="right" id="proto-name">hover a plate</span></div>
+      <div class="stage-wrap" style="height:clamp(320px,38vw,430px)"><canvas class="stage" id="cv-stack"></canvas></div>
+      <div style="padding:16px 18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--ink-2);min-height:76px;background:#fff" id="proto-detail">
+        Sixteen adapters share one request builder, one session history and one proxy resolver. Hover the stack to read each one.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CALCULATOR ============================ -->
+<section id="calc" class="tint">
+  <div class="wrap sec-head">
+    <p class="rfc"><b>RFC 9002</b> · loss detection and recovery — estimate before you migrate</p>
+    <h2>What the move to HTTP/3 is worth on your network</h2>
+    <p>A first-order model of connection setup: TCP pays a SYN round trip plus a TLS handshake and retransmits on loss, while QUIC folds crypto into the transport handshake and can resume at zero round trips. Move the sliders to your real numbers.</p>
+  </div>
+
+  <div class="wrap calc">
+    <div class="sliders">
+      <div class="slider-row">
+        <label for="rtt">Round-trip time to origin <b><span id="rtt-v">80</span> ms</b></label>
+        <input type="range" id="rtt" min="10" max="320" value="80" step="5">
+      </div>
+      <div class="slider-row">
+        <label for="loss">Packet loss on the path <b><span id="loss-v">3</span> %</b></label>
+        <input type="range" id="loss" min="0" max="25" value="3" step="1">
+      </div>
+      <div class="slider-row">
+        <label for="obj">Objects per page load <b><span id="obj-v">24</span></b></label>
+        <input type="range" id="obj" min="4" max="120" value="24" step="2">
+      </div>
+      <div class="result-row">
+        <div>HTTP/2 over TCP+TLS<b style="color:var(--fault)" id="r-tcp">—</b></div>
+        <div>HTTP/3 over QUIC<b style="color:var(--quic)" id="r-quic">—</b></div>
+        <div>Time saved<b id="r-gain">—</b></div>
+      </div>
+    </div>
+    <div class="viewport">
+      <div class="viewport-bar"><span class="dot"></span> first-byte model <span class="right">illustrative — run the real benchmark in-app</span></div>
+      <div class="stage-wrap" style="height:clamp(280px,32vw,360px);cursor:default"><canvas class="stage" id="cv-bars"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ QUICKSTART ============================ -->
+<section id="start" class="wrap">
+  <div class="sec-head">
+    <p class="rfc"><b>Quick start</b> · Python 3.10+ on Windows, macOS or Linux</p>
+    <h2>Running in about a minute</h2>
+  </div>
+  <div class="steps">
+    <div class="step"><span class="num">Step 1</span><h3>Clone and install</h3><code>git clone https://github.com/sripad2020/PosTQuic
+cd PosTQuic
+pip install -r requirements.txt</code></div>
+    <div class="step"><span class="num">Step 2</span><h3>Start the controller</h3><code>python main.py
+# FastAPI on http://127.0.0.1:8000</code></div>
+    <div class="step"><span class="num">Step 3</span><h3>Open the workbench</h3><code>open http://127.0.0.1:8000
+# or double-click frontend/index.html</code>
+    <p style="font-size:13.5px;margin-top:12px">The UI falls back to an offline client when opened over <code class="inline" style="display:inline;padding:2px 5px">file://</code>, so you can browse the workbench before wiring up a target.</p></div>
+  </div>
+</section>
+
+<!-- ============================ CONTACT ============================ -->
+<section id="contact" class="wrap" style="padding-top:0">
+  <div class="contact">
+    <h2>Questions, a demo, or a copy of the build?</h2>
+    <p class="lead">Write to me directly. Tell me which part of the stack you are testing and I will point you at the right instrument.</p>
+    <a class="mail" href="mailto:sripadkarthik@gmail.com?subject=QUICLAB">sripadkarthik@gmail.com</a>
+    <div class="hero-actions" style="justify-content:center;margin-top:30px">
+      <a class="btn btn-primary btn-lg" href="mailto:sripadkarthik@gmail.com?subject=QUICLAB">Send an email</a>
+      <a class="btn btn-ghost btn-lg" href="https://github.com/sripad2020/PosTQuic" target="_blank" rel="noopener">Read the source</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>QUICLAB · a multi-protocol transport workbench</span>
+    <span>RFC 9000 · 9001 · 9002 · 9114 · 9204 · 9221 · 9329 · 9368 · 8446</span>
+    <span><a href="mailto:sripadkarthik@gmail.com">sripadkarthik@gmail.com</a> · <a href="https://github.com/sripad2020/PosTQuic" target="_blank" rel="noopener">GitHub</a></span>
+  </div>
+</footer>
+
+<!--
+  ─────────────────────────────────────────────────────────────
+  VISIT COUNTER — backend endpoint
+  The page POSTs one small JSON body per visit to VISIT_ENDPOINT
+  and expects {"total": <int>, "unique": <int>} back. Drop this
+  into your existing FastAPI app (main.py) and it just works:
+
+    from fastapi import APIRouter, Request
+    from pydantic import BaseModel
+    import sqlite3, datetime
+
+    router = APIRouter()
+    DB = "visits.db"
+
+    def _db():
+        c = sqlite3.connect(DB)
+        c.execute("CREATE TABLE IF NOT EXISTS visits("
+                  "id INTEGER PRIMARY KEY, vid TEXT, path TEXT, ref TEXT,"
+                  "ua TEXT, ip TEXT, ts TEXT)")
+        return c
+
+    class Visit(BaseModel):
+        vid: str
+        path: str = "/"
+        ref: str = ""
+
+    @router.post("/api/v1/visits")
+    def record(v: Visit, request: Request):
+        c = _db()
+        c.execute("INSERT INTO visits(vid,path,ref,ua,ip,ts) VALUES(?,?,?,?,?,?)",
+                  (v.vid, v.path, v.ref,
+                   request.headers.get("user-agent", "")[:300],
+                   request.client.host if request.client else "",
+                   datetime.datetime.utcnow().isoformat()))
+        c.commit()
+        total  = c.execute("SELECT COUNT(*) FROM visits").fetchone()[0]
+        unique = c.execute("SELECT COUNT(DISTINCT vid) FROM visits").fetchone()[0]
+        c.close()
+        return {"total": total, "unique": unique}
+
+    # app.include_router(router)
+
+  If the endpoint is unreachable (static hosting, file://), the page
+  silently falls back to counting in this browser only — nothing breaks.
+
+  TO READ THE NUMBERS: type  stats  anywhere on the page,
+  or press Ctrl+Shift+Q, or open the page with #ql-stats in the URL.
+  Esc closes it. Normal visitors see nothing.
+  ─────────────────────────────────────────────────────────────
+-->
+<div class="progress" id="ql-progress" aria-hidden="true"></div>
+
+<aside class="opanel" id="ql-panel" role="dialog" aria-label="Site statistics" aria-hidden="true">
+  <header><span class="dot"></span> <b>visitors</b> <button class="x" id="ql-close" aria-label="Close">×</button></header>
+  <dl>
+    <dt>total visits</dt><dd id="ql-total">—</dd>
+    <dt>unique visitors</dt><dd id="ql-unique">—</dd>
+    <dt>this browser</dt><dd id="ql-views">—</dd>
+    <dt>sessions</dt><dd id="ql-sessions">—</dd>
+    <dt>first seen</dt><dd id="ql-first">—</dd>
+    <dt>referrer</dt><dd id="ql-ref">—</dd>
+  </dl>
+  <footer id="ql-src">source: local</footer>
+</aside>
+
+<script>
+/* =========================================================
+   QUICLAB site shell — analytics, reveal, nav, progress
+   ========================================================= */
+(function(){
+"use strict";
+
+/* ---- point this at your FastAPI controller ---- */
+var VISIT_ENDPOINT = '/api/v1/visits';
+
+var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function $(id){ return document.getElementById(id); }
+function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v); return v; }catch(e){ return null; } }
+
+/* ---------- visit counting ---------- */
+var stats = { total:null, unique:null, views:0, sessions:0, first:'', ref:'', src:'local' };
+
+function uid(){
+  var id = ls('ql_vid');
+  if(!id){
+    if(window.crypto && crypto.randomUUID) id = crypto.randomUUID();
+    else id = 'v-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,10);
+    ls('ql_vid', id);
+  }
+  return id;
+}
+
+function countVisit(){
+  var now = new Date().toISOString();
+  if(!ls('ql_first')) ls('ql_first', now);
+  ls('ql_last', now);
+
+  stats.views = (parseInt(ls('ql_views')||'0',10) || 0) + 1;
+  ls('ql_views', stats.views);
+
+  var newSession = false;
+  try{ if(!sessionStorage.getItem('ql_s')){ sessionStorage.setItem('ql_s','1'); newSession = true; } }
+  catch(e){ newSession = true; }
+  stats.sessions = (parseInt(ls('ql_sessions')||'0',10) || 0) + (newSession ? 1 : 0);
+  ls('ql_sessions', stats.sessions);
+
+  stats.first = (ls('ql_first')||'').slice(0,10);
+  stats.ref = document.referrer ? (document.referrer.split('/')[2] || 'direct') : 'direct';
+
+  // local mirror of the global count, so the panel has something even offline
+  stats.total = parseInt(ls('ql_total')||'0',10) || stats.views;
+
+  if(location.protocol === 'file:') { paint(); return; }
+
+  var body = JSON.stringify({ vid: uid(), path: location.pathname, ref: document.referrer || '' });
+  fetch(VISIT_ENDPOINT, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:body, keepalive:true
+  })
+  .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+  .then(function(d){
+    if(typeof d.total === 'number'){ stats.total = d.total; ls('ql_total', d.total); }
+    if(typeof d.unique === 'number') stats.unique = d.unique;
+    stats.src = 'server';
+    paint();
+  })
+  .catch(function(){ paint(); });
+
+  paint();
+}
+
+function paint(){
+  $('ql-total').textContent    = stats.total == null ? '—' : stats.total.toLocaleString();
+  $('ql-unique').textContent   = stats.unique == null ? '—' : stats.unique.toLocaleString();
+  $('ql-views').textContent    = stats.views.toLocaleString();
+  $('ql-sessions').textContent = stats.sessions.toLocaleString();
+  $('ql-first').textContent    = stats.first || '—';
+  $('ql-ref').textContent      = stats.ref || '—';
+  $('ql-src').textContent      = 'source: ' + stats.src + (stats.src === 'local' ? ' (endpoint unreachable)' : '');
+}
+
+/* ---------- hidden readout: type "stats", Ctrl+Shift+Q, or #ql-stats ---------- */
+function panel(){
+  var el = $('ql-panel'), open = false, buf = '';
+  function show(v){
+    open = v;
+    el.classList.toggle('on', v);
+    el.setAttribute('aria-hidden', v ? 'false' : 'true');
+    if(v) paint();
+  }
+  $('ql-close').addEventListener('click', function(){ show(false); });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && open){ show(false); return; }
+    if(e.ctrlKey && e.shiftKey && (e.key === 'Q' || e.key === 'q')){ e.preventDefault(); show(!open); return; }
+    var tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if(e.key && e.key.length === 1){
+      buf = (buf + e.key.toLowerCase()).slice(-6);
+      if(buf.indexOf('stats') > -1){ buf = ''; show(!open); }
+    }
+  });
+  if(location.hash === '#ql-stats') show(true);
+  window.addEventListener('hashchange', function(){ if(location.hash === '#ql-stats') show(true); });
+}
+
+/* ---------- scroll progress ---------- */
+function progress(){
+  var bar = $('ql-progress'), ticking = false;
+  function run(){
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.transform = 'scaleX(' + (h > 0 ? Math.min(window.scrollY / h, 1) : 0) + ')';
+    ticking = false;
+  }
+  window.addEventListener('scroll', function(){ if(!ticking){ ticking = true; requestAnimationFrame(run); } }, {passive:true});
+  run();
+}
+
+/* ---------- scroll reveal ---------- */
+function reveal(){
+  var targets = document.querySelectorAll('.sec-head, .card, .step, .viewport, .tbl-scroll, .sliders, .contact, .flights, .terminal');
+  if(!('IntersectionObserver' in window) || REDUCED){
+    [].forEach.call(targets, function(el){ el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, {rootMargin:'0px 0px -8% 0px', threshold:0.06});
+  [].forEach.call(targets, function(el, i){
+    el.classList.add('rv');
+    el.style.transitionDelay = ((i % 3) * 70) + 'ms';
+    io.observe(el);
+  });
+}
+
+/* ---------- count-up stat band ---------- */
+function counters(){
+  var nums = document.querySelectorAll('[data-count]');
+  function run(el){
+    var to = parseFloat(el.dataset.count), t0 = null, dur = 1100;
+    if(REDUCED){ el.textContent = to; return; }
+    function step(ts){
+      if(t0 === null) t0 = ts;
+      var k = Math.min((ts - t0) / dur, 1);
+      var e = 1 - Math.pow(1 - k, 3);
+      el.textContent = Math.round(to * e);
+      if(k < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  if(!('IntersectionObserver' in window)){ [].forEach.call(nums, run); return; }
+  var io = new IntersectionObserver(function(en){
+    en.forEach(function(x){ if(x.isIntersecting){ run(x.target); io.unobserve(x.target); } });
+  }, {threshold:0.5});
+  [].forEach.call(nums, function(el){ io.observe(el); });
+}
+
+/* ---------- nav: active section + mobile drawer ---------- */
+function nav(){
+  var links = [].slice.call(document.querySelectorAll('.nav a[href^="#"]'));
+  var secs = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  var toggle = $('nav-toggle'), menu = document.querySelector('.nav');
+
+  if(toggle){
+    toggle.addEventListener('click', function(){
+      var open = menu.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    menu.addEventListener('click', function(e){
+      if(e.target.tagName === 'A'){ menu.classList.remove('open'); toggle.setAttribute('aria-expanded','false'); }
+    });
+  }
+
+  if(!('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(!en.isIntersecting) return;
+      var i = secs.indexOf(en.target);
+      if(i < 0) return;
+      links.forEach(function(a,k){ a.classList.toggle('on', k === i); });
+    });
+  }, {rootMargin:'-45% 0px -50% 0px'});
+  secs.forEach(function(s){ if(s) io.observe(s); });
+}
+
+/* ---------- copy buttons on code blocks ---------- */
+function copyButtons(){
+  [].forEach.call(document.querySelectorAll('.step code, .inst-code, .term-body'), function(code){
+    code.classList.add('codewrap');
+    var b = document.createElement('button');
+    b.className = 'copy'; b.type = 'button'; b.textContent = 'copy';
+    b.setAttribute('aria-label','Copy to clipboard');
+    b.addEventListener('click', function(){
+      var text = (code.innerText || '').replace(/\ncopy$/,'').trim();
+      var done = function(){ b.textContent = 'copied'; b.classList.add('done');
+        setTimeout(function(){ b.textContent = 'copy'; b.classList.remove('done'); }, 1400); };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done, function(){});
+      } else {
+        var ta = document.createElement('textarea'); ta.value = text;
+        document.body.appendChild(ta); ta.select();
+        try{ document.execCommand('copy'); done(); }catch(e){}
+        document.body.removeChild(ta);
+      }
+    });
+    code.appendChild(b);
+  });
+}
+
+function start(){
+  countVisit();
+  panel();
+  progress();
+  reveal();
+  counters();
+  nav();
+  copyButtons();
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+else start();
+})();
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var HAS3D = (function(){ try{ var c=document.createElement('canvas');
+  return !!(window.THREE && (c.getContext('webgl')||c.getContext('experimental-webgl'))); }catch(e){ return false; } })();
+
+var C = { quic:0x0E9E92, h3:0x5B45D6, tls:0xB8730C, fault:0xD6335A, ok:0x17824B, dim:0x8A98AC, ink:0x0D1526 };
+var CSS = { quic:'#0E9E92', h3:'#5B45D6', tls:'#B8730C', fault:'#D6335A', ok:'#17824B', ink:'#0D1526', ink2:'#4A5A72', ink3:'#7F8EA5', line:'#E1E7EE' };
+
+/* ---------- scene registry: render only what is on screen ---------- */
+var scenes = [];
+function register(canvas, tick){
+  var s = { canvas:canvas, tick:tick, visible:false };
+  scenes.push(s);
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(en){ s.visible = en[0].isIntersecting; },{threshold:0.02})
+      .observe(canvas.closest('.viewport') || canvas);
+  } else { s.visible = true; }
+  return s;
+}
+var last = performance.now();
+function loop(now){
+  var dt = Math.min((now - last)/1000, 0.05); last = now;
+  for(var i=0;i<scenes.length;i++){ if(scenes[i].visible) scenes[i].tick(dt, now/1000); }
+  requestAnimationFrame(loop);
+}
+
+function makeRenderer(canvas){
+  var r = new THREE.WebGLRenderer({canvas:canvas, alpha:true, antialias:true});
+  r.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  return r;
+}
+function fit(renderer, camera, canvas){
+  var w = canvas.clientWidth||1, h = canvas.clientHeight||1;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  return camera.aspect;
+}
+function autoFit(renderer, camera, canvas, baseZ){
+  function run(){
+    var a = fit(renderer, camera, canvas);
+    if(baseZ){
+      camera.position.z = baseZ * (a < 0.95 ? 1.6 : a < 1.3 ? 1.3 : 1);
+      camera.lookAt(0, camera.userData.lookY||0, 0);
+    }
+  }
+  run();
+  window.addEventListener('resize', run);
+  if('ResizeObserver' in window) new ResizeObserver(run).observe(canvas.parentElement);
+  setTimeout(run, 140);
+}
+
+/* ---------- pointer orbit ---------- */
+function orbit(el, target, o){
+  o = o || {};
+  var rx=o.rx||0, ry=o.ry||0, tx=rx, ty=ry, down=false, lx=0, ly=0, moved=false;
+  el.addEventListener('pointerdown', function(e){ down=true; moved=false; lx=e.clientX; ly=e.clientY;
+    if(el.setPointerCapture) try{ el.setPointerCapture(e.pointerId); }catch(err){} });
+  el.addEventListener('pointermove', function(e){
+    if(!down) return;
+    var dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
+    if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
+    ty += dx*0.007;
+    if(!o.lockX) tx = Math.max(-0.7, Math.min(0.7, tx + dy*0.005));
+  });
+  window.addEventListener('pointerup', function(){ down=false; });
+  return {
+    spin:function(v){ ty += v; },
+    setY:function(v){ ty = v; },
+    getY:function(){ return ty; },
+    get dragging(){ return down; },
+    get moved(){ return moved; },
+    update:function(){
+      ry += (ty-ry)*0.1; rx += (tx-rx)*0.1;
+      target.rotation.y = ry; target.rotation.x = rx;
+    }
+  };
+}
+
+/* ---------- align a box mesh between two points ---------- */
+var _v = new THREE.Vector3(), _up = new THREE.Vector3(1,0,0), _q = new THREE.Quaternion();
+function span(mesh, a, b){
+  _v.subVectors(b,a);
+  mesh.position.copy(a).addScaledVector(_v, 0.5);
+  mesh.scale.x = _v.length();
+  _q.setFromUnitVectors(_up, _v.clone().normalize());
+  mesh.quaternion.copy(_q);
+}
+
+/* =========================================================
+   THE 15 INSTRUMENTS
+   ========================================================= */
+var TOOLS = [
+ ['0-RTT anti-replay','RFC 9001 8','/api/v1/quic/zerortt-test', C.tls,
+  'Resuming at zero round trips is the headline QUIC win and the easiest thing to get wrong: an attacker who captures an early-data flight can replay it. QUICLAB sends the flight twice and checks that the server strike register rejects the duplicate.',
+  '{\n  "target": "https://api.example.com",\n  "resume_ticket": "auto",\n  "replay_count": 2\n}',
+  'early_data_accepted : true\nreplay_rejected     : true\nstrike_register     : bloom, 4096 bits\nsaved_per_resume    : 1 RTT (78 ms)\nverdict             : safe'],
+ ['QPACK dynamic table','RFC 9204','/api/v1/quic/qpack-analysis', C.h3,
+  'HTTP/3 header compression lives on two unidirectional control streams, and if encoder and decoder fall out of sync the connection dies with a confusing error. This reads the table state and the real compression ratio on your own traffic.',
+  '{\n  "target": "https://api.example.com",\n  "header_sets": 50,\n  "table_capacity": 4096\n}',
+  'encoder_stream 0x02 : in sync\ndecoder_stream 0x03 : in sync\ncompression_ratio   : 4.8x\nevictions           : 3\nblocked_streams     : 0'],
+ ['Congestion control benchmark','RFC 9002 7','/api/v1/quic/congestion-benchmark', C.quic,
+  'BBR v2 and Cubic behave very differently on a lossy or shallow-buffered path. Instead of trusting a blog post, benchmark both on the path you actually serve and read the cwnd and recovery curves side by side.',
+  '{\n  "target": "https://cdn.example.com",\n  "algorithms": ["bbr2", "cubic"],\n  "duration_s": 30\n}',
+  'bbr2  : 94.2 Mbps | cwnd 1.8 MB | recovery 210 ms\ncubic : 61.7 Mbps | cwnd 0.9 MB | recovery 640 ms\nrecommendation : bbr2 on this path'],
+ ['Path MTU and ECN probe','RFC 9000 14','/api/v1/quic/pmtud-ecn-probe', C.quic,
+  'A datagram one byte over the path MTU is silently dropped, and ECN markings are frequently bleached by middleboxes. This walks the size range from 1200 to 9000 bytes and reports where the path stops cooperating.',
+  '{\n  "target": "203.0.113.20:443",\n  "range": [1200, 9000],\n  "ecn": ["ECT(0)", "ECT(1)", "CE"]\n}',
+  'max_datagram    : 1452 bytes\nblackhole_above : 1473 bytes\necn_preserved   : ECT(0) yes, CE bleached\naction          : clamp to 1452'],
+ ['Spin bit and CID privacy','RFC 9000 17.4','/api/v1/quic/spinbit-privacy-audit', C.fault,
+  'The spin bit lets anyone on the path measure your round-trip time, and connection IDs that never rotate let them link a user across networks. This audits both, which matters for a privacy review as much as for performance.',
+  '{\n  "target": "https://api.example.com",\n  "observe_packets": 500\n}',
+  'spin_bit_enabled : true (RTT observable)\ncid_rotation     : every 24 packets\nlinkability_risk : low\nnote             : disable spin bit for privacy builds'],
+ ['Connection migration','RFC 9000 9','/api/v1/quic/connection-migration-test', C.h3,
+  'Migration is what lets a download survive a walk out of the office. The test forces a new 4-tuple mid-transfer and confirms the server validates the path rather than tearing the connection down or, worse, accepting it without a challenge.',
+  '{\n  "target": "https://api.example.com",\n  "migrate_after_bytes": 2097152,\n  "new_path": "cellular"\n}',
+  'PATH_CHALLENGE 0x1a : sent\nPATH_RESPONSE  0x1b : 31 ms\nconnection_id       : unchanged\nbytes_lost          : 0\nverdict             : migration clean'],
+ ['DATAGRAM extension','RFC 9221','/api/v1/quic/datagram-extension-test', C.quic,
+  'Unreliable datagrams skip the stream reorder buffer, which is exactly what real-time media and tunnelling want. This measures delivery, ordering and drop behaviour under your chosen loss profile.',
+  '{\n  "target": "https://media.example.com",\n  "datagram_size": 1200,\n  "count": 1000,\n  "loss_profile": "burst"\n}',
+  'max_datagram_frame_size : 1200\ndelivered               : 971 / 1000\nmean_latency            : 22 ms\nhead_of_line_blocking   : none'],
+ ['Encrypted ClientHello','RFC 9001 · ECH','/api/v1/quic/ech-privacy-test', C.tls,
+  'Without ECH the domain you are visiting sits in plaintext in the first packet. This encrypts the inner ClientHello with HPKE and verifies the outer SNI really does hide the target from anything on the path.',
+  '{\n  "outer_sni": "public-ech.example",\n  "inner_sni": "private.example.com"\n}',
+  'ech_config_fetched : yes (HPKE X25519)\ninner_sni_hidden   : true\ngrease_fallback    : accepted\nverdict            : SNI shielded'],
+ ['Flow control auto-tuning','RFC 9000 4','/api/v1/quic/flow-control-test', C.h3,
+  'Windows that are too small throttle throughput; too large and one stream can starve the rest. This watches consumption and checks that MAX_DATA updates arrive before the sender runs out of credit.',
+  '{\n  "target": "https://api.example.com",\n  "initial_max_data": 1048576,\n  "streams": 8\n}',
+  'MAX_DATA 0x10 updates : 41\nstall_events          : 0\npeak_window           : 6.2 MB\ntuning                : window grew 6x, no starvation'],
+ ['ACK frequency pacing','ACK Frequency draft','/api/v1/quic/ack-frequency-test', C.quic,
+  'On asymmetric links the return path fills with acknowledgements. Negotiating a larger ack-eliciting threshold cuts that overhead, and this measures exactly how much you get back on your own link.',
+  '{\n  "target": "https://api.example.com",\n  "ack_eliciting_threshold": 10,\n  "max_ack_delay_ms": 25\n}',
+  'ack_packets_before : 4820\nack_packets_after  : 1060\nreverse_overhead   : -78%\nrtt_impact         : +1.4 ms'],
+ ['Stateless reset tokens','RFC 9000 10.3','/api/v1/quic/stateless-reset-test', C.fault,
+  'When a server reboots and loses connection state it must send a stateless reset the client can verify. A predictable or missing token turns an ordinary restart into a denial-of-service surface.',
+  '{\n  "target": "https://api.example.com",\n  "simulate_state_loss": true\n}',
+  'token_length : 128 bits\nentropy      : high\naccepted     : true\nspoofable    : no\nverdict      : conformant'],
+ ['Version negotiation','RFC 9368','/api/v1/quic/version-negotiation-test', C.tls,
+  'Forcing a version negotiation flight proves the server advertises what it claims and will not accept a downgrade. The same flight is the first thing an attacker tries against a mixed-version fleet.',
+  '{\n  "target": "https://api.example.com",\n  "offer_version": "0x00000000"\n}',
+  'versions_offered : v1, v2, draft-29\nnegotiated       : v1\ndowngrade_guard  : TLS 1.3 protected\nverdict          : no downgrade path'],
+ ['CRYPTO stream reassembly','RFC 9000 19.6','/api/v1/quic/crypto-reassembly-test', C.fault,
+  'Handshake bytes arrive as CRYPTO frames that may be out of order, overlapping or duplicated. Reassembly bugs here are a classic memory-safety hazard, so the test deliberately scrambles the offsets.',
+  '{\n  "target": "https://api.example.com",\n  "shuffle": true,\n  "overlap_bytes": 64\n}',
+  'frames_sent      : 12 (shuffled)\nreassembled      : correct\noverlap_handling : rejected per spec\nmemory_anomaly   : none'],
+ ['Multipath QUIC','MP-QUIC draft','/api/v1/quic/multipath-quic-test', C.h3,
+  'Aggregating Wi-Fi and cellular at the same time is the next step past migration. The scheduler test splits stream frames across subflows and reports whether the aggregate actually beats the better single path.',
+  '{\n  "target": "https://api.example.com",\n  "subflows": ["wifi", "cellular"],\n  "scheduler": "min_rtt"\n}',
+  'subflow wifi     : 48 Mbps | rtt 18 ms\nsubflow cellular : 31 Mbps | rtt 44 ms\naggregate        : 74 Mbps\nreorder_penalty  : 6%'],
+ ['WebTransport over HTTP/3','RFC 9329','/api/v1/quic/webtransport-protocol-test', C.quic,
+  'WebTransport opens on an extended CONNECT stream and then offers both reliable streams and unreliable datagrams to the browser. This verifies session setup and both delivery modes end to end.',
+  '{\n  "target": "https://wt.example.com/session",\n  "streams": 4,\n  "datagrams": 200\n}',
+  'extended_connect : accepted (:protocol=webtransport)\nsession_id       : 0x04\nbidi_streams     : 4 open\ndatagrams        : 196 / 200 delivered']
+];
+
+var current = 0;
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function colorResult(s){
+  return esc(s).split('\n').map(function(line){
+    var i = line.indexOf(':');
+    if(i < 0) return line;
+    var k = line.slice(0,i), val = line.slice(i+1).trim();
+    var cls = '';
+    if(/^(true|yes|correct|none|safe|clean|conformant|in sync|accepted|0$)/i.test(val) ||
+       /\b(no downgrade|shielded|unchanged|rejected per spec|no starvation)\b/i.test(val)) cls='c-ok';
+    if(/\b(bleach|risk|observable|penalty|blackhole|clamp|disable)\b/i.test(val)) cls='c-tls';
+    return '<span class="kv">'+k+'</span>: <span class="'+cls+'">'+val+'</span>';
+  }).join('\n');
+}
+
+function showTool(i, fromRing){
+  current = ((i % TOOLS.length) + TOOLS.length) % TOOLS.length;
+  var t = TOOLS[current];
+  document.getElementById('inst-index').textContent = String(current+1).padStart(2,'0');
+  document.getElementById('inst-rfc').innerHTML = '<b>'+esc(t[1])+'</b>';
+  document.getElementById('inst-title').textContent = t[0];
+  document.getElementById('inst-body').textContent = t[4];
+  document.getElementById('inst-pre').innerHTML =
+    '<span class="c-h3">POST</span> <span class="c-quic">'+t[2]+'</span>\n' + esc(t[5]) +
+    '\n\n<span class="t">← response</span>\n' + colorResult(t[6]);
+  [].forEach.call(document.querySelectorAll('.num-btn'), function(b,k){
+    b.setAttribute('aria-current', k===current ? 'true':'false');
+  });
+  if(!fromRing && window.__ringTo) window.__ringTo(current);
+}
+
+function buildNums(){
+  var host = document.getElementById('inst-nums');
+  var nav = document.getElementById('inst-prev').parentElement;
+  TOOLS.forEach(function(t,i){
+    var b = document.createElement('button');
+    b.className='num-btn'; b.type='button';
+    b.textContent = String(i+1).padStart(2,'0');
+    b.title = t[0];
+    b.setAttribute('role','tab');
+    b.addEventListener('click', function(){ showTool(i); });
+    host.insertBefore(b, nav);
+  });
+  document.getElementById('inst-prev').addEventListener('click', function(){ showTool(current-1); });
+  document.getElementById('inst-next').addEventListener('click', function(){ showTool(current+1); });
+}
+
+/* ---------- plate texture ---------- */
+function plateTexture(i, t){
+  var W=640, H=320, c=document.createElement('canvas');
+  c.width=W; c.height=H;
+  var x=c.getContext('2d');
+  x.fillStyle='#FFFFFF'; x.fillRect(0,0,W,H);
+  var col = '#'+('000000'+t[3].toString(16)).slice(-6);
+  x.fillStyle=col; x.fillRect(0,0,W,10);
+  x.strokeStyle=CSS.line; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2);
+
+  x.fillStyle=CSS.ink3; x.font='500 26px "IBM Plex Mono", monospace';
+  x.fillText(String(i+1).padStart(2,'0'), 34, 72);
+  x.fillStyle=col; x.font='500 22px "IBM Plex Mono", monospace';
+  x.textAlign='right'; x.fillText(t[1], W-34, 72); x.textAlign='left';
+
+  x.fillStyle=CSS.ink; x.font='600 40px "Space Grotesk", sans-serif';
+  var words=t[0].split(' '), line='', y=150;
+  for(var w=0; w<words.length; w++){
+    var test = line ? line+' '+words[w] : words[w];
+    if(x.measureText(test).width > W-70 && line){ x.fillText(line, 34, y); y+=48; line=words[w]; }
+    else line = test;
+  }
+  x.fillText(line, 34, y);
+
+  x.fillStyle=CSS.ink3; x.font='400 22px "IBM Plex Mono", monospace';
+  x.fillText(t[2].replace('/api/v1',''), 34, H-38);
+
+  var tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function ringScene(){
+  var canvas = document.getElementById('cv-ring');
+  if(!canvas || !HAS3D) return;
+  var wrap = canvas.parentElement;
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(38,1,0.1,100);
+  camera.position.set(0,0.35,8.6); camera.userData.lookY=0;
+  var renderer = makeRenderer(canvas);
+  scene.add(new THREE.AmbientLight(0xffffff,0.95));
+  var dl=new THREE.DirectionalLight(0xffffff,0.45); dl.position.set(2,5,6); scene.add(dl);
+
+  var root = new THREE.Group(); root.rotation.x = 0.1; scene.add(root);
+  var R = 5.0, N = TOOLS.length;
+  var plates=[], STEP = Math.PI*2/N;
+  var pGeo = new THREE.BoxGeometry(1.9, 0.95, 0.09);
+
+  TOOLS.forEach(function(t,i){
+    var col = t[3];
+    var side = new THREE.MeshStandardMaterial({color:0xF2F5F8, roughness:.85, metalness:0});
+    var face = new THREE.MeshBasicMaterial({map:plateTexture(i,t), transparent:true});
+    var m = new THREE.Mesh(pGeo, [side,side,side,side,face,side]);
+    var a = i*STEP;
+    m.position.set(Math.sin(a)*R, 0, Math.cos(a)*R);
+    m.rotation.y = a;
+    m.userData.i = i; m.userData.k = 0;
+    root.add(m); plates.push(m);
+
+    var e = new THREE.LineSegments(new THREE.EdgesGeometry(pGeo),
+      new THREE.LineBasicMaterial({color:col, transparent:true, opacity:.35}));
+    e.position.copy(m.position); e.rotation.copy(m.rotation);
+    m.userData.edge = e; root.add(e);
+
+    // spoke to the hub, so the ring reads as one instrument, not 15 cards
+    var sp = new THREE.Mesh(new THREE.BoxGeometry(R-0.95, 0.012, 0.012),
+      new THREE.MeshBasicMaterial({color:0xC8D2DE}));
+    sp.position.set(Math.sin(a)*(R-0.95)/2, -0.62, Math.cos(a)*(R-0.95)/2);
+    sp.rotation.y = a - Math.PI/2;
+    root.add(sp);
+  });
+
+  var hub = new THREE.Mesh(new THREE.TorusGeometry(0.85,0.03,12,64),
+    new THREE.MeshBasicMaterial({color:0xC8D2DE}));
+  hub.rotation.x = Math.PI/2; hub.position.y = -0.62; root.add(hub);
+  var core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42,0),
+    new THREE.MeshStandardMaterial({color:0x0D1526, roughness:.45, metalness:.2, transparent:true, opacity:.9}));
+  core.position.y = -0.62; root.add(core);
+
+  var ctl = orbit(wrap, root, {rx:0.1, ry:0, lockX:true});
+  var targetY = 0, snapping = true;
+
+  window.__ringTo = function(i){ targetY = -i*STEP; snapping = true; ctl.setY(targetY); };
+
+  // click to select
+  var ray = new THREE.Raycaster(), ndc = new THREE.Vector2(-99,-99), hovered=-1;
+  wrap.addEventListener('pointermove', function(e){
+    var r = canvas.getBoundingClientRect();
+    ndc.x = ((e.clientX-r.left)/r.width)*2-1;
+    ndc.y = -((e.clientY-r.top)/r.height)*2+1;
+  });
+  wrap.addEventListener('pointerleave', function(){ ndc.set(-99,-99); });
+  wrap.addEventListener('click', function(){
+    if(ctl.moved) return;
+    ray.setFromCamera(ndc, camera);
+    var hits = ray.intersectObjects(plates, false);
+    if(hits.length) showTool(hits[0].object.userData.i);
+  });
+  var hint = document.getElementById('ring-hint');
+  wrap.addEventListener('pointerdown', function(){ if(hint) hint.style.opacity='0'; });
+
+  autoFit(renderer, camera, canvas, 8.6);
+
+  // one orchestrated entrance: the ring spins up and settles on instrument 01
+  ctl.setY(-Math.PI*1.6);
+  if(!REDUCED) setTimeout(function(){ ctl.setY(0); }, 240);
+
+  register(canvas, function(dt,t){
+    ctl.update();
+    // when the user spins freely, snap the nearest plate to front and select it
+    if(ctl.dragging) snapping = false;
+    if(!ctl.dragging && !snapping){
+      var y = ctl.getY();
+      var idx = Math.round(-y/STEP);
+      ctl.setY(-idx*STEP);
+      snapping = true;
+      var norm = ((idx % N) + N) % N;
+      if(norm !== current) showTool(norm, true);
+    }
+
+    ray.setFromCamera(ndc, camera);
+    var hits = ray.intersectObjects(plates, false);
+    hovered = hits.length ? hits[0].object.userData.i : -1;
+    wrap.style.cursor = hovered>=0 ? 'pointer' : 'grab';
+
+    plates.forEach(function(m,i){
+      var want = (i===current) ? 1 : (i===hovered ? 0.55 : 0);
+      m.userData.k += (want - m.userData.k) * Math.min(dt*8,1);
+      var k = m.userData.k;
+      var a = i*STEP;
+      var rr = R + k*0.55;
+      m.position.set(Math.sin(a)*rr, k*0.18, Math.cos(a)*rr);
+      m.scale.setScalar(1 + k*0.14);
+      m.userData.edge.position.copy(m.position);
+      m.userData.edge.scale.copy(m.scale);
+      m.userData.edge.material.opacity = 0.2 + k*0.8;
+    });
+
+    core.rotation.y += dt*0.5; core.rotation.x += dt*0.25;
+    renderer.render(scene,camera);
+  });
+}
+
+/* =========================================================
+   HERO — TCP single lane vs QUIC multiplexed streams
+   ========================================================= */
+function heroScene(){
+  var canvas = document.getElementById('cv-hero');
+  if(!canvas) return;
+  var wrap = canvas.parentElement;
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.set(0, 2.4, 9.2);
+  var renderer = makeRenderer(canvas);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+  var key = new THREE.DirectionalLight(0xffffff, 0.6); key.position.set(4,7,6); scene.add(key);
+
+  var root = new THREE.Group(); scene.add(root);
+
+  function node(color){
+    var g = new THREE.Group();
+    var box = new THREE.BoxGeometry(0.85,1.5,0.85);
+    g.add(new THREE.Mesh(box, new THREE.MeshStandardMaterial({color:color, roughness:.5, metalness:.1, transparent:true, opacity:.16})));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({color:color})));
+    return g;
+  }
+  var clientPos = new THREE.Vector3(-3.9,0,0), serverPos = new THREE.Vector3(3.9,0,0);
+  var client = node(C.quic), server = node(C.h3);
+  root.add(client); root.add(server);
+
+  var faultMat = new THREE.MeshStandardMaterial({color:C.fault, roughness:.35, metalness:.1});
+  var laneGeo = new THREE.BoxGeometry(1, 0.035, 0.035);
+  var pktGeo  = new THREE.BoxGeometry(0.19,0.19,0.19);
+  var lanes = [];
+
+  function addLane(cfg){
+    var mat = new THREE.MeshBasicMaterial({color:cfg.color, transparent:true, opacity:cfg.op||0.5});
+    var mesh = new THREE.Mesh(laneGeo, mat); root.add(mesh);
+    var pktMat = new THREE.MeshStandardMaterial({color:cfg.color, roughness:.35, metalness:.1});
+    var L = { off:new THREE.Vector3(0,cfg.y,cfg.z), color:cfg.color, mesh:mesh, mat:mat, pktMat:pktMat,
+              packets:[], blocked:false, blockT:0.55, spawn:cfg.spawn||0.55, acc:Math.random()*0.5,
+              speed:cfg.speed||0.34, tcp:!!cfg.tcp, a:new THREE.Vector3(), b:new THREE.Vector3() };
+    lanes.push(L); return L;
+  }
+  var tcpLane = addLane({color:C.dim, y:1.45, z:0, speed:0.30, spawn:0.42, tcp:true, op:0.8});
+  function quicLane(i,n){
+    return addLane({color: i%2 ? C.h3 : C.quic, y:-0.85, z:(i-(n-1)/2)*0.62, speed:0.34, spawn:0.5});
+  }
+  for(var i=0;i<4;i++) quicLane(i,4);
+
+  function relayout(){
+    var qs = lanes.filter(function(l){return !l.tcp;});
+    qs.forEach(function(l,i){ l.off.z = (i-(qs.length-1)/2) * (qs.length>5?0.40:0.62); });
+  }
+
+  var grid = new THREE.GridHelper(16,16,0xC8D2DE,0xE3E9F0);
+  grid.position.y=-2.1; grid.material.transparent=true; grid.material.opacity=.85; root.add(grid);
+
+  function tag(text, color, top){
+    var d=document.createElement('div'); d.textContent=text;
+    d.style.cssText='position:absolute;pointer-events:none;font-family:var(--mono);font-size:10.5px;top:'+top+';left:16px;color:'+color;
+    wrap.appendChild(d); return d;
+  }
+  tag('TCP · one lane, shared fate', 'var(--ink-3)', '14%');
+  var tagQuic = tag('QUIC · 4 independent streams', 'var(--quic)', '72%');
+
+  var ctl = orbit(wrap, root, {rx:0.12, ry:-0.25});
+  var log = document.getElementById('hero-log');
+  var hint = document.getElementById('hero-hint');
+  wrap.addEventListener('pointerdown', function(){ if(hint) hint.style.opacity='0'; });
+
+  var lines=[];
+  function say(html){
+    var d=new Date();
+    var ts=String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0')+'.'+String(Math.floor(d.getMilliseconds()/10)).padStart(2,'0');
+    lines.unshift('<div><span class="t">'+ts+'</span>  '+html+'</div>');
+    lines=lines.slice(0,5);
+    if(log) log.innerHTML=lines.join('');
+  }
+  say('<span class="c-ok">handshake complete</span> <span class="t">· 1-RTT keys installed, alpn=h3</span>');
+
+  var migT=0, migDir=0;
+
+  document.getElementById('btn-drop').addEventListener('click', function(){
+    var q = lanes.filter(function(l){return !l.tcp;});
+    var victim = q[1]||q[0];
+    victim.blocked=true; victim.blockT=0.52;
+    tcpLane.blocked=true; tcpLane.blockT=0.52;
+    say('<span class="c-fault">packet lost</span> <span class="t">pn=4181 on stream '+((q.indexOf(victim)+1)*4)+'</span>');
+    setTimeout(function(){ say('<span class="t">TCP: every response behind it waits for the retransmission</span>'); },420);
+    setTimeout(function(){ say('<span class="c-quic">QUIC: the other '+(q.length-1)+' streams keep delivering</span>'); },900);
+    setTimeout(function(){ victim.blocked=false; tcpLane.blocked=false;
+      say('<span class="c-ok">retransmit acked</span> <span class="t">· both lanes drained</span>'); },2400);
+  });
+  document.getElementById('btn-migrate').addEventListener('click', function(){
+    migDir = migDir?0:1;
+    say('<span class="c-h3">PATH_CHALLENGE 0x1a</span> <span class="t">· client moved to a new 4-tuple</span>');
+    setTimeout(function(){ say('<span class="c-ok">PATH_RESPONSE 0x1b</span> <span class="t">· same connection ID, zero downtime</span>'); },700);
+  });
+  document.getElementById('btn-burst').addEventListener('click', function(){
+    var q = lanes.filter(function(l){return !l.tcp;});
+    if(q.length>=8){ say('<span class="t">8 streams already open</span>'); return; }
+    for(var k=q.length;k<8;k++) quicLane(k,8);
+    relayout(); tagQuic.textContent='QUIC · 8 independent streams';
+    say('<span class="c-h3">8 bidirectional streams open</span> <span class="t">· one connection, one handshake</span>');
+  });
+  document.getElementById('btn-reset').addEventListener('click', function(){
+    lanes.forEach(function(l){ l.blocked=false; l.packets.forEach(function(p){ root.remove(p.mesh); }); l.packets=[]; });
+    var q = lanes.filter(function(l){return !l.tcp;});
+    while(q.length>4){ var l=q.pop(); root.remove(l.mesh); lanes.splice(lanes.indexOf(l),1); }
+    relayout(); migDir=0; tagQuic.textContent='QUIC · 4 independent streams';
+    lines=[]; say('<span class="c-ok">connection reset</span> <span class="t">· fresh 1-RTT handshake</span>');
+  });
+
+  autoFit(renderer, camera, canvas, 9.2);
+
+  register(canvas, function(dt,t){
+    migT += ((migDir?1:0)-migT)*Math.min(dt*3,1);
+    clientPos.set(-3.9, migT*0.9, migT*2.6);
+    client.position.copy(clientPos); server.position.copy(serverPos);
+    client.rotation.y = t*0.35; server.rotation.y = -t*0.3;
+
+    lanes.forEach(function(L){
+      L.a.copy(clientPos).add(L.off);
+      L.b.copy(serverPos).add(L.off);
+      span(L.mesh, L.a, L.b);
+      L.mat.color.setHex(L.blocked ? C.fault : L.color);
+
+      if(!REDUCED){
+        L.acc += dt;
+        if(L.acc > L.spawn){
+          L.acc = 0;
+          var m = new THREE.Mesh(pktGeo, L.pktMat);
+          root.add(m); L.packets.push({t:0, mesh:m});
+        }
+      }
+      L.packets.sort(function(x,y){ return y.t-x.t; });
+      for(var i=L.packets.length-1;i>=0;i--){
+        var p=L.packets[i];
+        p.t += L.speed*dt;
+        if(L.blocked){ var cap = L.blockT - i*0.055; if(p.t>cap) p.t=cap; }
+        if(p.t>=1){ root.remove(p.mesh); L.packets.splice(i,1); continue; }
+        p.mesh.position.lerpVectors(L.a,L.b,p.t);
+        p.mesh.rotation.x += dt*2.2; p.mesh.rotation.y += dt*1.6;
+        p.mesh.material = (L.blocked && i===0) ? faultMat : L.pktMat;
+      }
+    });
+
+    if(!ctl.dragging && !REDUCED) ctl.spin(dt*0.05);
+    ctl.update();
+    renderer.render(scene,camera);
+  });
+}
+
+/* =========================================================
+   GLOBE — connection migration across real paths
+   ========================================================= */
+var SCENARIOS = [
+  { title:'A commuter goes from platform Wi-Fi to 5G mid-download',
+    body:'The phone changes IP and port halfway through a 40 MB app update. Over TCP the socket is dead and the download restarts. QUIC keeps the connection ID, validates the new path with PATH_CHALLENGE and carries on from the same offset. QUICLAB scripts that handover so you can run it a hundred times and watch where your stack drops the connection, instead of waiting for a field report.',
+    tools:'Instruments used: connection migration · path validation · spin-bit and CID privacy audit', color:C.h3, from:[19.0,72.8] },
+  { title:'Live video over Media-over-QUIC, where a stall costs viewers',
+    body:'MoQ and WebTransport carry frames as unreliable DATAGRAMs, so a late frame is dropped rather than queued behind a retransmit. The tuning question is how aggressive the pacing can be before quality collapses. QUICLAB streams real datagram loads, charts BBR v2 against Cubic on your path, and reports how many frames actually arrived inside the deadline.',
+    tools:'Instruments used: DATAGRAM extension · congestion benchmark · ACK frequency pacing', color:C.quic, from:[35.7,139.7] },
+  { title:'A trading edge with a four millisecond budget',
+    body:'Every avoidable round trip is money. Zero-RTT resumption removes the handshake for returning clients, but replayed early data is a real attack, so the server must keep a strike register. QUICLAB replays captured early-data flights to confirm duplicates are rejected, then measures what 0-RTT actually saved you rather than what the vendor claimed.',
+    tools:'Instruments used: 0-RTT anti-replay · flow control auto-tuning · stress generator p50–p99', color:C.tls, from:[40.7,-74.0] },
+  { title:'Rolling HTTP/3 out across a CDN estate',
+    body:'Different points of presence run different QUIC implementations, and a proxy in front of one of them may not speak UDP at all. QUICLAB validates protocol against proxy before the request leaves, probes path MTU and ECN marking at each edge, and audits TLS at all fifteen checkpoints, so the rollout fails in your terminal rather than in production.',
+    tools:'Instruments used: compatibility matrix · PMTUD and ECN probe · 15-point TLS audit', color:C.ok, from:[51.5,-0.12] }
+];
+
+function globeScene(){
+  var canvas = document.getElementById('cv-globe');
+  if(!canvas) return;
+  var wrap = canvas.parentElement;
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40,1,0.1,100);
+  camera.position.set(0,0.6,7.4); camera.userData.lookY=0;
+  var renderer = makeRenderer(canvas);
+  scene.add(new THREE.AmbientLight(0xffffff,0.95));
+  var dl=new THREE.DirectionalLight(0xffffff,0.5); dl.position.set(3,4,6); scene.add(dl);
+
+  var root=new THREE.Group(); scene.add(root);
+  var R=2.0;
+  root.add(new THREE.Mesh(new THREE.SphereGeometry(R-0.015,36,26),
+    new THREE.MeshStandardMaterial({color:0xF4F7FA, roughness:.95, metalness:0})));
+  root.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(R,26,18)),
+    new THREE.LineBasicMaterial({color:0xC2CDDB, transparent:true, opacity:.75})));
+
+  function ll(lat,lon,r){
+    var p=(90-lat)*Math.PI/180, th=(lon+180)*Math.PI/180;
+    return new THREE.Vector3(-(r*Math.sin(p)*Math.cos(th)), r*Math.cos(p), r*Math.sin(p)*Math.sin(th));
+  }
+  function marker(color){
+    var g=new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.075,16,16), new THREE.MeshBasicMaterial({color:color})));
+    var ring=new THREE.Mesh(new THREE.RingGeometry(0.12,0.155,28),
+      new THREE.MeshBasicMaterial({color:color, transparent:true, opacity:.55, side:THREE.DoubleSide}));
+    g.add(ring); g.userData.ring=ring; root.add(g); return g;
+  }
+  var srvPos=ll(37.4,-122.1,R);
+  var srv=marker(C.h3); srv.position.copy(srvPos); srv.lookAt(0,0,0);
+  var cli=marker(C.quic);
+
+  var ARCN=46, arcPts=new Float32Array(ARCN*3);
+  var arcGeo=new THREE.BufferGeometry();
+  arcGeo.setAttribute('position', new THREE.BufferAttribute(arcPts,3));
+  var arcMat=new THREE.LineBasicMaterial({color:C.quic});
+  root.add(new THREE.Line(arcGeo,arcMat));
+
+  var pulses=[];
+  for(var i=0;i<4;i++){
+    var m=new THREE.Mesh(new THREE.SphereGeometry(0.052,12,12), new THREE.MeshBasicMaterial({color:C.quic}));
+    root.add(m); pulses.push({mesh:m,t:i*0.25});
+  }
+
+  var curFrom=ll(19.0,72.8,R).clone(), tgtFrom=curFrom.clone();
+  var curve=new THREE.QuadraticBezierCurve3(curFrom.clone(),curFrom.clone(),srvPos.clone());
+
+  window.__setGlobe=function(sc){
+    var s=SCENARIOS[sc];
+    tgtFrom.copy(ll(s.from[0],s.from[1],R));
+    arcMat.color.setHex(s.color);
+    cli.children[0].material.color.setHex(s.color);
+    cli.userData.ring.material.color.setHex(s.color);
+    pulses.forEach(function(p){ p.mesh.material.color.setHex(s.color); });
+  };
+
+  var ctl=orbit(wrap,root,{rx:0.18,ry:0.4});
+  autoFit(renderer,camera,canvas,7.4);
+
+  register(canvas, function(dt,t){
+    curFrom.lerp(tgtFrom, Math.min(dt*2.4,1));
+    cli.position.copy(curFrom); cli.lookAt(0,0,0);
+    srv.userData.ring.scale.setScalar(1+Math.sin(t*2.2)*0.18);
+    cli.userData.ring.scale.setScalar(1+Math.sin(t*2.2+1.6)*0.18);
+
+    var mid=curFrom.clone().add(srvPos).multiplyScalar(0.5).normalize().multiplyScalar(R*1.62);
+    curve.v0.copy(curFrom); curve.v1.copy(mid); curve.v2.copy(srvPos);
+    for(var i=0;i<ARCN;i++){
+      var p=curve.getPoint(i/(ARCN-1));
+      arcPts[i*3]=p.x; arcPts[i*3+1]=p.y; arcPts[i*3+2]=p.z;
+    }
+    arcGeo.attributes.position.needsUpdate=true;
+
+    pulses.forEach(function(p){ p.t+=dt*0.42; if(p.t>1)p.t-=1; p.mesh.position.copy(curve.getPoint(p.t)); });
+
+    if(!ctl.dragging && !REDUCED) ctl.spin(dt*0.09);
+    ctl.update();
+    renderer.render(scene,camera);
+  });
+}
+
+function applyScenario(i){
+  var s=SCENARIOS[i];
+  document.getElementById('sc-title').textContent=s.title;
+  document.getElementById('sc-body').textContent=s.body;
+  document.getElementById('sc-tools').textContent=s.tools;
+  if(window.__setGlobe) window.__setGlobe(i);
+}
+
+/* =========================================================
+   PROTOCOL STACK — 16 adapters
+   ========================================================= */
+var PROTOCOLS = [
+  ['HTTP/3','QUIC / UDP','Stream multiplexing, 0-RTT, QPACK, client-cert header injection',C.h3],
+  ['Raw QUIC','UDP','RFC 9000 long and short headers, CID rotation, path migration, spin bit',C.quic],
+  ['WebTransport','HTTP/3','Datagrams plus uni- and bidirectional streams over an H3 CONNECT',C.h3],
+  ['Media over QUIC','QUIC / UDP','Low-latency live audio and video with per-frame deadlines',C.quic],
+  ['HTTP/2','TCP / TLS','Multiplexed streams, HPACK compression, binary frame inspection',C.h3],
+  ['HTTP/1.1','TCP / TLS','REST, custom headers, keep-alive — the baseline you compare against',C.dim],
+  ['OpenSSL / TLS','TLS 1.3 · 1.2','15-point audit, handshake animator, SSLKEYLOGFILE export',C.tls],
+  ['WebSocket','TCP (ws/wss)','Full-duplex frame streams and echo testing',C.h3],
+  ['Raw TCP','TCP socket','Plain text, hexadecimal or base64 payloads on any port',C.dim],
+  ['Raw UDP','UDP datagram','Configurable packet count and size for high-throughput bursts',C.quic],
+  ['DNS','UDP / TCP / DoH','A, AAAA, MX, TXT and CAA records with resolver comparison',C.ok],
+  ['RTP','UDP','Real-time media payload timestamping and jitter observation',C.quic],
+  ['FTP / FTPS','TCP / explicit TLS','Passive and active data channel verification',C.dim],
+  ['SSH / SFTP','TCP','Subsystem authentication and shell session probing',C.ok],
+  ['SOCKS5 proxy','TCP tunnel','Tunnel validation through the protocol compatibility matrix',C.tls],
+  ['HTTP proxy','TCP CONNECT','Catches the classic mistake of routing QUIC over a TCP-only proxy',C.fault]
+];
+
+function stackScene(){
+  var canvas=document.getElementById('cv-stack');
+  if(!canvas) return;
+  var wrap=canvas.parentElement;
+  var scene=new THREE.Scene();
+  var camera=new THREE.PerspectiveCamera(40,1,0.1,100);
+  camera.position.set(0,1.4,8.2); camera.userData.lookY=0;
+  var renderer=makeRenderer(canvas);
+  scene.add(new THREE.AmbientLight(0xffffff,0.95));
+  var d1=new THREE.DirectionalLight(0xffffff,0.55); d1.position.set(3,6,5); scene.add(d1);
+
+  var root=new THREE.Group(); scene.add(root);
+  var plates=[], geo=new THREE.BoxGeometry(3.3,0.17,1.7), n=PROTOCOLS.length;
+  PROTOCOLS.forEach(function(p,i){
+    var m=new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color:p[3], roughness:.55, metalness:.05, transparent:true, opacity:.20}));
+    m.position.y=(i-(n-1)/2)*0.255;
+    m.userData.i=i; m.userData.k=0; root.add(m); plates.push(m);
+    var e=new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color:p[3], transparent:true, opacity:.6}));
+    e.position.copy(m.position); m.userData.edge=e; root.add(e);
+  });
+
+  var ray=new THREE.Raycaster(), ndc=new THREE.Vector2(-99,-99), hovered=-1;
+  var nameEl=document.getElementById('proto-name'), detEl=document.getElementById('proto-detail');
+  var defaultDetail=detEl.innerHTML;
+
+  wrap.addEventListener('pointermove', function(e){
+    var r=canvas.getBoundingClientRect();
+    ndc.x=((e.clientX-r.left)/r.width)*2-1;
+    ndc.y=-((e.clientY-r.top)/r.height)*2+1;
+  });
+  wrap.addEventListener('pointerleave', function(){ ndc.set(-99,-99); });
+
+  var ctl=orbit(wrap,root,{rx:0.14,ry:-0.5});
+  autoFit(renderer,camera,canvas,8.2);
+
+  register(canvas, function(dt,t){
+    if(!ctl.dragging && !REDUCED) ctl.spin(dt*0.16);
+    ctl.update();
+
+    ray.setFromCamera(ndc,camera);
+    var hits=ray.intersectObjects(plates,false);
+    var h=hits.length?hits[0].object.userData.i:-1;
+    if(h!==hovered){
+      hovered=h;
+      if(h>=0){
+        var p=PROTOCOLS[h];
+        nameEl.textContent=p[0];
+        detEl.innerHTML='<span style="color:var(--ink)">'+p[0]+'</span> <span style="color:var(--ink-3)">· '+p[1]+'</span><br>'+p[2];
+      } else { nameEl.textContent='hover a plate'; detEl.innerHTML=defaultDetail; }
+    }
+
+    plates.forEach(function(m,i){
+      var want=(i===hovered)?1:0;
+      m.userData.k += (want-m.userData.k)*Math.min(dt*9,1);
+      var k=m.userData.k;
+      m.material.opacity=0.20+k*0.55;
+      m.scale.set(1+k*0.06,1,1+k*0.06);
+      m.position.z=k*0.45;
+      m.userData.edge.position.copy(m.position);
+      m.userData.edge.scale.copy(m.scale);
+      m.userData.edge.material.opacity=0.6+k*0.4;
+    });
+    renderer.render(scene,camera);
+  });
+}
+
+/* =========================================================
+   CALCULATOR
+   ========================================================= */
+function calcScene(){
+  var rtt=document.getElementById('rtt'), loss=document.getElementById('loss'), obj=document.getElementById('obj');
+  var rv=document.getElementById('rtt-v'), lv=document.getElementById('loss-v'), ov=document.getElementById('obj-v');
+  var rT=document.getElementById('r-tcp'), rQ=document.getElementById('r-quic'), rG=document.getElementById('r-gain');
+  var state={tcp:400,quic:120};
+
+  function fillbar(el){ el.style.setProperty('--fill', ((el.value-el.min)/(el.max-el.min))*100+'%'); }
+  function calc(){
+    var R=+rtt.value, L=+loss.value/100, N=+obj.value;
+    var tcp=Math.round(R*3 + R*L*Math.min(N,60)*0.55 + R*L*4);
+    var quic=Math.round(R*1.0 + R*L*Math.min(N,60)*0.08 + R*L*1.2);
+    rv.textContent=R; lv.textContent=+loss.value; ov.textContent=N;
+    rT.textContent=tcp+' ms'; rQ.textContent=quic+' ms';
+    rG.textContent=(tcp-quic)+' ms · '+(tcp/Math.max(quic,1)).toFixed(1)+'×';
+    state.tcp=tcp; state.quic=quic;
+    [rtt,loss,obj].forEach(fillbar);
+  }
+  [rtt,loss,obj].forEach(function(el){ el.addEventListener('input',calc); });
+  calc();
+
+  var canvas=document.getElementById('cv-bars');
+  if(!canvas || !HAS3D) return;
+  var scene=new THREE.Scene();
+  var camera=new THREE.PerspectiveCamera(38,1,0.1,100);
+  camera.position.set(3.2,3.0,6.6); camera.userData.lookY=0.6;
+  var renderer=makeRenderer(canvas);
+  scene.add(new THREE.AmbientLight(0xffffff,0.95));
+  var dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(3,6,4); scene.add(dl);
+
+  var root=new THREE.Group(); scene.add(root);
+  var grid=new THREE.GridHelper(8,8,0xC8D2DE,0xE3E9F0); grid.material.transparent=true; grid.material.opacity=.9; root.add(grid);
+
+  function bar(x,color){
+    var g=new THREE.Group(), bg=new THREE.BoxGeometry(1.1,1,1.1);
+    var m=new THREE.Mesh(bg,new THREE.MeshStandardMaterial({color:color, roughness:.5, metalness:.05, transparent:true, opacity:.35}));
+    var e=new THREE.LineSegments(new THREE.EdgesGeometry(bg), new THREE.LineBasicMaterial({color:color}));
+    g.add(m); g.add(e); g.position.x=x; root.add(g);
+    return {meshes:[m,e], h:1};
+  }
+  var bTcp=bar(-1.1,C.fault), bQuic=bar(1.1,C.quic);
+  var ctl=orbit(canvas.parentElement, root, {rx:0.0, ry:-0.35});
+  autoFit(renderer,camera,canvas,6.6);
+
+  register(canvas, function(dt){
+    var max=Math.max(state.tcp,state.quic,1);
+    function upd(b,val){
+      var target=0.25+(val/max)*3.1;
+      b.h += (target-b.h)*Math.min(dt*6,1);
+      b.meshes.forEach(function(m){ m.scale.y=b.h; m.position.y=b.h/2; });
+    }
+    upd(bTcp,state.tcp); upd(bQuic,state.quic);
+    if(!ctl.dragging && !REDUCED) ctl.spin(dt*0.12);
+    ctl.update();
+    renderer.render(scene,camera);
+  });
+}
+
+/* ---------- handshake flights ---------- */
+var FLIGHTS=[
+  ['01','ClientHello','offers ciphers, key share, ALPN h3'],
+  ['02','ServerHello','picks TLS_AES_128_GCM_SHA256'],
+  ['03','EncryptedExtensions','transport parameters exchanged'],
+  ['04','Certificate + Verify','chain and OCSP staple checked'],
+  ['05','Finished','1-RTT keys installed'],
+  ['06','Application data','streams open, keys written to log']
+];
+function buildFlights(){
+  var el=document.getElementById('flights'); if(!el) return;
+  FLIGHTS.forEach(function(f){
+    var d=document.createElement('div'); d.className='flight'; d.tabIndex=0;
+    d.innerHTML='<span class="n">'+f[0]+'</span><span class="nm">'+f[1]+'</span><span class="dsc">'+f[2]+'</span>';
+    el.appendChild(d);
+  });
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  buildNums();
+  buildFlights();
+  calcScene();
+  showTool(0);
+  if(HAS3D){
+    ringScene();
+    heroScene();
+    globeScene();
+    stackScene();
+    requestAnimationFrame(loop);
+  } else {
+    [].forEach.call(document.querySelectorAll('.stage-wrap'), function(el){ el.style.display='none'; });
+    [].forEach.call(document.querySelectorAll('.viewport-bar .right'), function(el){ el.textContent='3D view unavailable in this browser'; });
+  }
+  applyScenario(0);
+
+  document.getElementById('scenario-rail').addEventListener('click', function(e){
+    var b=e.target.closest('.chip'); if(!b) return;
+    [].forEach.call(this.querySelectorAll('.chip'), function(c){ c.classList.remove('active'); });
+    b.classList.add('active');
+    applyScenario(parseInt(b.dataset.sc,10));
+  });
+}
+if(document.fonts && document.fonts.ready){ document.fonts.ready.then(boot); }
+else if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', boot); }
+else boot();
+})();
+</script>
+</body>
+</html>
