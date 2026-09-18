@@ -1,5 +1,4 @@
 import time
-import random
 from typing import Dict, Any, List
 
 class MetricsCollector:

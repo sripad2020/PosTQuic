@@ -1,7 +1,15 @@
 import time
-from typing import Dict, Any, Optional, Tuple
+import socket
+import asyncio
+from typing import Dict, Any, Optional, Tuple, List
 from app.protocols.base import BaseProtocolAdapter
 from app.core.metrics import MetricsCollector
+
+try:
+    import paramiko
+    PARAMIKO_AVAILABLE = True
+except ImportError:
+    PARAMIKO_AVAILABLE = False
 
 class SSHSFTPAdapter(BaseProtocolAdapter):
     def __init__(self):
@@ -19,40 +27,127 @@ class SSHSFTPAdapter(BaseProtocolAdapter):
         network_route: str,
         proxy_profile: Optional[Any] = None
     ) -> Dict[str, Any]:
-        host = config.get("host", "test.rebex.net")
+        host = config.get("host")
+        if not host:
+            return {"status": "SSH_CONNECTION_FAILED", "error": "Target host missing"}
+
         port = int(config.get("port", 22))
         username = config.get("username", "demo")
+        password = config.get("password", "")
         subsystem = config.get("subsystem", "sftp")  # "ssh" or "sftp"
+        remote_dir = config.get("remote_dir", ".")
 
         metrics = MetricsCollector()
-        rtt = 34.0
-        metrics.record_sample(rtt, 240, 1850)
+        t0 = time.perf_counter()
 
-        if subsystem == "ssh":
+        def _run_paramiko_session() -> Dict[str, Any]:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(host=host, port=port, username=username, password=password or None, timeout=5.0)
+
+            transport = ssh.get_transport()
+            cipher_name = transport.get_cipher_name() if transport else "Unknown"
+            kex_name = transport.get_kex_info() if transport else "Unknown"
+
+            if subsystem == "ssh":
+                stdin, stdout, stderr = ssh.exec_command("uname -a; uptime")
+                out_str = stdout.read().decode("utf-8", errors="ignore")
+                err_str = stderr.read().decode("utf-8", errors="ignore")
+                ssh.close()
+                return {
+                    "subsystem": "ssh",
+                    "cipher": cipher_name,
+                    "kex": kex_name,
+                    "command_output": out_str or err_str or "Session connected successfully."
+                }
+            else:
+                sftp = ssh.open_sftp()
+                attr_list = sftp.listdir_attr(remote_dir)
+                parsed_files = []
+                for attr in attr_list[:20]:
+                    parsed_files.append({
+                        "filename": attr.filename,
+                        "size": attr.st_size,
+                        "permissions": oct(attr.st_mode),
+                        "modified": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(attr.st_mtime))
+                    })
+                sftp.close()
+                ssh.close()
+                return {
+                    "subsystem": "sftp",
+                    "cipher": cipher_name,
+                    "kex": kex_name,
+                    "file_list": parsed_files
+                }
+
+        loop = asyncio.get_event_loop()
+        if PARAMIKO_AVAILABLE:
+            try:
+                res = await loop.run_in_executor(None, _run_paramiko_session)
+                rtt = (time.perf_counter() - t0) * 1000.0
+                metrics.record_sample(rtt, 240, 1850)
+
+                if res["subsystem"] == "ssh":
+                    return {
+                        "status": "SSH_SESSION_AUTHENTICATED",
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "subsystem": "ssh-user-shell",
+                        "kex_algorithm": str(res["kex"]),
+                        "cipher": res["cipher"],
+                        "command_output": res["command_output"],
+                        "rtt_ms": round(rtt, 2),
+                        "metrics": metrics.get_summary()
+                    }
+                else:
+                    return {
+                        "status": "SFTP_SUBSYSTEM_OPEN",
+                        "host": host,
+                        "port": port,
+                        "username": username,
+                        "subsystem": "sftp",
+                        "remote_dir": remote_dir,
+                        "kex_algorithm": str(res["kex"]),
+                        "cipher": res["cipher"],
+                        "file_list": res["file_list"],
+                        "rtt_ms": round(rtt, 2),
+                        "metrics": metrics.get_summary()
+                    }
+            except Exception as paramiko_err:
+                pass
+
+        # Fallback to direct TCP socket SSH protocol banner handshake probe (RFC 4253)
+        t1 = time.perf_counter()
+        try:
+            conn = await loop.run_in_executor(
+                None, lambda: socket.create_connection((host, port), timeout=4.0)
+            )
+            server_banner = conn.recv(1024).decode("utf-8", errors="ignore").strip()
+            # Send client identification string
+            conn.sendall(b"SSH-2.0-QUICLAB_SSH_Client_1.0\r\n")
+            conn.close()
+            rtt = (time.perf_counter() - t1) * 1000.0
+            metrics.record_sample(rtt, 32, len(server_banner))
+
             return {
-                "status": "SSH_SESSION_AUTHENTICATED",
+                "status": "SSH_PORT_ACTIVE_BANNER_VERIFIED",
                 "host": host,
                 "port": port,
-                "username": username,
-                "subsystem": "ssh-user-shell",
-                "kex_algorithm": "curve25519-sha256",
-                "cipher": "chacha20-poly1305@openssh.com",
-                "command_output": "Linux quiclab-target 5.15.0 #1 SMP PREEMPT x86_64 GNU/Linux\nquiclab@target:~$ uptime\n 05:43:00 up 12 days, 4 users, load average: 0.08, 0.04, 0.01",
+                "server_banner": server_banner or "SSH-2.0 Server Active",
+                "subsystem": subsystem,
+                "rtt_ms": round(rtt, 2),
+                "paramiko_available": PARAMIKO_AVAILABLE,
                 "metrics": metrics.get_summary()
             }
-        else:
+        except Exception as sock_err:
+            rtt = (time.perf_counter() - t0) * 1000.0
             return {
-                "status": "SFTP_SUBSYSTEM_OPEN",
+                "status": "SSH_CONNECTION_FAILED",
                 "host": host,
                 "port": port,
-                "username": username,
-                "subsystem": "sftp",
-                "sftp_version": 3,
-                "remote_dir": "/pub/example",
-                "file_list": [
-                    {"filename": "readme.txt", "size": 1024, "type": "FILE", "permissions": "0644", "modified": "2026-09-17 04:00:00"},
-                    {"filename": "images", "size": 4096, "type": "DIR", "permissions": "0755", "modified": "2026-09-17 04:12:00"},
-                    {"filename": "data.json", "size": 8940, "type": "FILE", "permissions": "0600", "modified": "2026-09-17 04:30:00"}
-                ],
+                "error": f"SSH connection failed: {str(sock_err)}",
+                "rtt_ms": round(rtt, 2),
                 "metrics": metrics.get_summary()
             }
+

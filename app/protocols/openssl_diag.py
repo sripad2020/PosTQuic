@@ -5,6 +5,13 @@ from typing import Dict, Any, Optional, Tuple
 from app.protocols.base import BaseProtocolAdapter
 from app.core.metrics import MetricsCollector
 
+try:
+    import OpenSSL.crypto
+    import OpenSSL.SSL
+    PYOPENSSL_AVAILABLE = True
+except ImportError:
+    PYOPENSSL_AVAILABLE = False
+
 class OpenSSLAdapter(BaseProtocolAdapter):
     def __init__(self):
         super().__init__("OpenSSL Diagnostic Engine", "OPENSSL")
@@ -21,15 +28,17 @@ class OpenSSLAdapter(BaseProtocolAdapter):
         network_route: str,
         proxy_profile: Optional[Any] = None
     ) -> Dict[str, Any]:
-        host = config.get("host", "cloudflare.com")
+        host = config.get("host")
+        if not host:
+            return {"status": "OPENSSL_HANDSHAKE_FAILED", "error": "Target host missing"}
+        
         port = int(config.get("port", 443))
         sni = config.get("sni", host)
-        tls_version = config.get("tls_version", "TLS 1.3")
 
         start_time = time.time()
         metrics = MetricsCollector()
 
-        # Build SSL Context with OpenSSL diagnostic extraction
+        # Build SSL Context
         context = ssl.create_default_context()
         context.check_hostname = True
         context.verify_mode = ssl.CERT_REQUIRED
@@ -51,8 +60,26 @@ class OpenSSLAdapter(BaseProtocolAdapter):
             issuer = dict(x[0] for x in cert.get('issuer', ()))
             sans = [item[1] for item in cert.get('subjectAltName', ())]
 
-            metrics.record_sample(rtt, 320, 1420)
+            # Deep PyOpenSSL inspection
+            pyopenssl_details = {}
+            if PYOPENSSL_AVAILABLE:
+                try:
+                    der_cert = sock.getpeercert(binary_form=True)
+                    x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, der_cert)
+                    pubkey = x509.get_pubkey()
+                    pyopenssl_details = {
+                        "pyopenssl_active": True,
+                        "serial_number": hex(x509.get_serial_number()),
+                        "signature_algorithm": x509.get_signature_algorithm().decode("utf-8", errors="ignore"),
+                        "public_key_bits": pubkey.bits(),
+                        "public_key_type": "RSA" if pubkey.type() == OpenSSL.crypto.TYPE_RSA else ("DSA" if pubkey.type() == OpenSSL.crypto.TYPE_DSA else "EC"),
+                        "has_expired": x509.has_expired(),
+                        "version": x509.get_version()
+                    }
+                except Exception as pyerr:
+                    pyopenssl_details = {"pyopenssl_active": False, "error": str(pyerr)}
 
+            metrics.record_sample(rtt, 320, 1420)
             sock.close()
 
             return {
@@ -74,6 +101,7 @@ class OpenSSLAdapter(BaseProtocolAdapter):
                     "valid_to": cert.get('notAfter'),
                     "subject_alt_names": sans[:10]
                 },
+                "pyopenssl_inspection": pyopenssl_details,
                 "rtt_ms": round(rtt, 2),
                 "metrics": metrics.get_summary()
             }
@@ -88,3 +116,4 @@ class OpenSSLAdapter(BaseProtocolAdapter):
                 "rtt_ms": round(rtt, 2),
                 "metrics": metrics.get_summary()
             }
+

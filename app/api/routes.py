@@ -193,95 +193,90 @@ async def update_lab_config(config: Dict[str, Any]):
 
 from app.protocols.quic_advanced import adv_quic_engine_instance
 
+def _extract_target(payload: Dict[str, Any]) -> tuple[str, int]:
+    host = payload.get("host") or payload.get("target_host") or payload.get("target")
+    if not host and payload.get("url"):
+        raw_url = payload.get("url", "")
+        host = raw_url.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+    if not host:
+        host = "127.0.0.1"
+    port = int(payload.get("port", 4433))
+    return host, port
+
 @router.post("/quic/zerortt-test")
 async def run_zerortt_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_zerortt_replay_test(host, port)
 
 @router.post("/quic/qpack-analysis")
 async def run_qpack_analysis(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_qpack_analysis(host, port)
 
 @router.post("/quic/congestion-benchmark")
 async def run_congestion_benchmark(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     algo = payload.get("algorithm", "BBR")
     return await adv_quic_engine_instance.run_congestion_benchmark(host, port, algo)
 
 @router.post("/quic/pmtud-ecn-probe")
 async def run_pmtud_ecn_probe(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_pmtud_ecn_probe(host, port)
 
 @router.post("/quic/spinbit-privacy-audit")
 async def run_spinbit_privacy_audit(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_spinbit_cid_privacy_audit(host, port)
 
 @router.post("/quic/connection-migration-test")
 async def run_connection_migration_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_connection_migration_test(host, port)
 
 @router.post("/quic/datagram-extension-test")
 async def run_datagram_extension_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_datagram_extension_test(host, port)
 
 @router.post("/quic/ech-privacy-test")
 async def run_ech_privacy_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_ech_sni_privacy_test(host, port)
 
 @router.post("/quic/flow-control-test")
 async def run_flow_control_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_flow_control_autotune_test(host, port)
 
 @router.post("/quic/ack-frequency-test")
 async def run_ack_frequency_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_ack_frequency_test(host, port)
 
 @router.post("/quic/stateless-reset-test")
 async def run_stateless_reset_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_stateless_reset_test(host, port)
 
 @router.post("/quic/version-negotiation-test")
 async def run_version_negotiation_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_version_negotiation_test(host, port)
 
 @router.post("/quic/crypto-reassembly-test")
 async def run_crypto_reassembly_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_crypto_stream_reassembly_test(host, port)
 
 @router.post("/quic/multipath-quic-test")
 async def run_multipath_quic_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_multipath_quic_test(host, port)
 
 @router.post("/quic/webtransport-protocol-test")
 async def run_webtransport_protocol_test(payload: Dict[str, Any]):
-    host = payload.get("host", "quic.tech")
-    port = int(payload.get("port", 4433))
+    host, port = _extract_target(payload)
     return await adv_quic_engine_instance.run_webtransport_protocol_test(host, port)
 
 from app.agent.mesh import agent_mesh_instance

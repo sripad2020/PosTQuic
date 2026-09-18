@@ -1,5 +1,5 @@
 import time
-import random
+import socket
 import asyncio
 import httpx
 from typing import Dict, Any, List
@@ -7,15 +7,14 @@ from typing import Dict, Any, List
 class HighThroughputStressRunner:
     async def run_stress_test(self, target_url: str, concurrency: int = 50, total_requests: int = 200) -> Dict[str, Any]:
         """
-        Executes high-throughput async load generator using httpx.AsyncClient worker pools & semaphores.
-        Calculates real-time RPS throughput, total duration, and exact p50/p90/p95/p99 latency percentiles.
+        Executes real-time high-throughput load generator using httpx.AsyncClient worker pools & semaphores.
+        Calculates exact real-time RPS throughput, total duration, and exact p50/p90/p95/p99 latency percentiles over the wire.
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         latencies: List[float] = []
         successful_requests = 0
         failed_requests = 0
 
-        # Cap total requests for real network safety if needed
         req_count = min(total_requests, 1000)
         worker_limit = max(1, min(concurrency, 100))
         semaphore = asyncio.Semaphore(worker_limit)
@@ -23,10 +22,10 @@ class HighThroughputStressRunner:
         async def worker(client: httpx.AsyncClient):
             nonlocal successful_requests, failed_requests
             async with semaphore:
-                t0 = time.time()
+                t0 = time.perf_counter()
                 try:
-                    resp = await client.get(target_url, timeout=4.0)
-                    t1 = time.time()
+                    resp = await client.get(target_url, timeout=5.0)
+                    t1 = time.perf_counter()
                     lat = (t1 - t0) * 1000.0
                     latencies.append(lat)
                     if resp.status_code < 400:
@@ -34,8 +33,8 @@ class HighThroughputStressRunner:
                     else:
                         failed_requests += 1
                 except Exception:
-                    t1 = time.time()
-                    lat = max(1.0, (t1 - t0) * 1000.0)
+                    t1 = time.perf_counter()
+                    lat = round((t1 - t0) * 1000.0, 2)
                     latencies.append(lat)
                     failed_requests += 1
 
@@ -44,21 +43,14 @@ class HighThroughputStressRunner:
                 tasks = [worker(client) for _ in range(req_count)]
                 await asyncio.gather(*tasks)
         except Exception:
-            # Fallback if network offline or non-http endpoint
-            for i in range(req_count):
-                lat = random.triangular(8.0, 45.0, 18.0)
-                latencies.append(lat)
-                if random.random() > 0.02:
-                    successful_requests += 1
-                else:
-                    failed_requests += 1
+            pass
 
-        total_time = max(0.01, time.time() - start_time)
+        total_time = max(0.001, time.perf_counter() - start_time)
         rps = round(req_count / total_time, 1)
 
         latencies.sort()
         if not latencies:
-            latencies = [15.0]
+            latencies = [0.0]
 
         p50 = round(latencies[int(len(latencies) * 0.50)], 2)
         p90 = round(latencies[int(len(latencies) * 0.90)], 2)
