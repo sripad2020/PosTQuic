@@ -218,3 +218,25 @@ def _error_vector(vector: FuzzerVector, error: str) -> Dict[str, Any]:
         "error":     error,
         "anomalies": [],
     }
+
+
+class FuzzerEngine:
+    """Thin facade matching the API surface the routes layer expects."""
+
+    async def execute_fuzz_campaign(self, host: str, port: int,
+                                    protocol: str = "QUIC",
+                                    iterations: int = 10) -> Dict[str, Any]:
+        req = FuzzRequest(
+            host=host,
+            port=int(port),
+            protocol=protocol,
+            vectors=FuzzerVector.all(),
+            iterations_per_vector=int(iterations),
+        )
+        report = await run_fuzz(req)
+        report["protocol"] = protocol
+        report["status"] = "FUZZ_CAMPAIGN_COMPLETE"
+        return report
+
+
+fuzzer_instance = FuzzerEngine()

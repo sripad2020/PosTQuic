@@ -1,9 +1,10 @@
-# 🚀 QUICLAB —Multi-Protocol Network, QUIC & Security Experimentation Workbench
+# 🚀 QUICLAB — Enterprise Multi-Protocol Network, QUIC & Security Experimentation Workbench
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
 [![QUIC RFC 9000](https://img.shields.io/badge/Standard-RFC%209000%20(QUIC)-7C3AED.svg)](https://datatracker.ietf.org/doc/html/rfc9000)
 [![TLS 1.3](https://img.shields.io/badge/Security-TLS%201.3-059669.svg)](https://datatracker.ietf.org/doc/html/rfc8446)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **QUICLAB** is a research-grade, Postman-like multi-protocol network testing, traffic analysis, and security experimentation platform. Designed for network software engineers, security auditors, protocol researchers, and performance architects, QUICLAB combines full-stack transport layer inspection across **16+ protocols** with real-time packet visualizers, cryptographic handshake animators, raw frame injectors, and high-concurrency load generators.
 
@@ -175,7 +176,7 @@ Access the Effective Route Inspector by clicking the **Effective Route Preview**
 custom_postman/
 ├── main.py                     # FastAPI application entry point & static file routing
 ├── requirements.txt            # Python dependencies (FastAPI, uvicorn, httpx, etc.)
-├── README.md                   # documentation
+├── README.md                   # Enterprise documentation
 ├── app/
 │   ├── api/
 │   │   └── routes.py           # REST API endpoints for all protocols & research tools
@@ -199,7 +200,7 @@ custom_postman/
 │   └── fuzzing/
 │       └── fuzzer.py           # QUIC & protocol security fuzzing engine
 └── frontend/
-    ├── index.html              # Workbench UI layout
+    ├── index.html              # Enterprise Workbench UI layout
     ├── css/                    # Main, components, and modal stylesheets
     └── js/
         ├── api_client.js       # Unified REST & WebSockets client with offline fallbacks
@@ -230,8 +231,8 @@ custom_postman/
 ### 1. Clone & Install Dependencies
 ```bash
 # Clone repository
-git clone https://github.com/your-org/quiclab.git
-cd quiclab
+git clone https://github.com/sripad2020/PosTQuic.git
+cd PosTQuic
 
 # Install required Python packages
 pip install -r requirements.txt

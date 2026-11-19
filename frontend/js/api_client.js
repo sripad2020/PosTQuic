@@ -298,354 +298,44 @@ class ApiClient {
     }
   }
 
-  static async runZeroRttTest(host, port) {
+  // ---- Advanced QUIC lab: every test runs for real on the backend. -------
+  // No offline fallback: if the backend is unreachable the UI must say so
+  // rather than show invented results.
+  static async _postAdvQuic(path, body) {
     try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/zerortt-test`, {
+      const res = await fetch(`${API_BASE}/api/v1/quic/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
+        body: JSON.stringify(body)
       });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
     } catch (err) {
       return {
-        status: "ZERORTT_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        anti_replay_protection: "SECURE_ANTI_REPLAY_ACTIVE",
-        strike_register_status: "VALIDATED",
-        flights_audit: [
-          { flight_id: 1, packet_type: "0-RTT Early Data", status: "ACCEPTED_BY_SERVER", server_action: "0-RTT Data Processed" },
-          { flight_id: 2, packet_type: "0-RTT Early Data (Replayed)", status: "REJECTED_BY_SERVER_STRIKE_REGISTER", server_action: "Strike Register Detected Duplicate Ticket. Connection Fallback." }
-        ]
+        status: 'TEST_FAILED',
+        target: `${body.host}:${body.port}`,
+        verdict: `Backend request failed (${err.message}). Is the QUICLAB server running?`,
+        summary: [],
+        table: null
       };
     }
   }
 
-  static async runQPackAnalysis(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/qpack-analysis`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "QPACK_ANALYSIS_COMPLETE",
-        target: `${host}:${port}`,
-        uncompressed_bytes: 280,
-        qpack_compressed_bytes: 54,
-        compression_savings_pct: 80.7,
-        encoder_stream_state: "SYNCHRONIZED",
-        decoder_stream_state: "SYNCHRONIZED",
-        dynamic_table: {
-          capacity_bytes: 4096,
-          current_size_bytes: 142,
-          entries_count: 3,
-          entries: [
-            { index: 0, name: ":authority", value: host, size_bytes: host.length + 10 },
-            { index: 1, name: "user-agent", value: "QUICLAB/1.0 Research Engine", size_bytes: 42 },
-            { index: 2, name: "alt-svc", value: 'h3=":443"; ma=86400', size_bytes: 28 }
-          ]
-        }
-      };
-    }
-  }
-
-  static async runCongestionBenchmark(host, port, algorithm) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/congestion-benchmark`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port, algorithm })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      const samples = Array.from({ length: 10 }, (_, i) => ({
-        round: i + 1,
-        cwnd_packets: +(10 + i * 1.5 - (i === 4 || i === 7 ? 4 : 0)).toFixed(1),
-        rtt_sample_ms: +(Math.random() * 5 + 18).toFixed(2),
-        pacing_rate_mbps: +((10 + i * 1.5) * 8.4).toFixed(1),
-        loss_event: i === 4 || i === 7
-      }));
-      return {
-        status: "CONGESTION_BENCHMARK_COMPLETE",
-        target: `${host}:${port}`,
-        algorithm: algorithm,
-        peak_cwnd_packets: 21.5,
-        recovery_speed_rounds: algorithm === 'BBR' ? 1.5 : 3.0,
-        throughput_samples: samples
-      };
-    }
-  }
-
-  static async runPmtudEcnProbe(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/pmtud-ecn-probe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "PMTUD_ECN_PROBE_COMPLETE",
-        target: `${host}:${port}`,
-        discovered_path_mtu_bytes: 1472,
-        ecn_validation: { ip_ecn_marking: "ECT(0) Supported", ce_echo_reaction: "VALIDATED", bleaching_detected: false },
-        pmtud_probes: [
-          { probe_size_bytes: 1200, status: "ACKNOWLEDGED", rtt_ms: 21.2 },
-          { probe_size_bytes: 1472, status: "ACKNOWLEDGED", rtt_ms: 21.8 },
-          { probe_size_bytes: 9000, status: "PACKET_TOO_BIG_FRAGMENTED", rtt_ms: null }
-        ]
-      };
-    }
-  }
-
-  static async runSpinbitPrivacyAudit(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/spinbit-privacy-audit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "PRIVACY_AUDIT_COMPLETE",
-        target: `${host}:${port}`,
-        spin_bit_analysis: { spin_bit_enabled: true, privacy_randomized: false, middlebox_rtt_leakage_risk: "MEDIUM", bit_sequence: [0, 1, 1, 0, 0, 1, 0, 1, 1, 0] },
-        cid_rotation_analysis: { cid_rotation_supported: true, unlinkability_protected: true, active_cids: [{ sequence: 0, cid: "cid_orig_8a2f1b09", status: "ACTIVE" }] },
-        host_implementation_details: { rfc_standard: "RFC 9000 Section 17.4", host_architecture: "Host toggles 1-bit Spin Bit per RTT round trip." }
-      };
-    }
-  }
-
-  static async runConnectionMigrationTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/connection-migration-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "CONNECTION_MIGRATION_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        previous_path: "192.168.1.50:54321 (WiFi)",
-        new_path: "10.142.0.12:61002 (Cellular 5G)",
-        path_validation: { path_challenge_sent: "0x1a", path_response_received: "0x1b", validation_status: "PATH_VALIDATED", probe_rtt_ms: 18.6 },
-        anti_amplification_limit: "UNRESTRICTED",
-        host_implementation_details: { rfc_standard: "RFC 9000 Section 9", host_architecture: "Host handles IP address changes via PATH_CHALLENGE / PATH_RESPONSE exchange." }
-      };
-    }
-  }
-
-  static async runDatagramExtensionTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/datagram-extension-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "DATAGRAM_EXTENSION_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        max_datagram_frame_size: 1350,
-        datagrams_sent: 100,
-        datagrams_received: 98,
-        loss_rate_pct: 2.0,
-        head_of_line_blocking: "ZERO",
-        host_implementation_details: { rfc_standard: "RFC 9221", host_architecture: "DATAGRAM frames (0x30/0x31) bypass stream ordering queues." }
-      };
-    }
-  }
-
-  static async runEchPrivacyTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/ech-privacy-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "ECH_PRIVACY_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        outer_sni_host: "public-gateway.cloudflare.com",
-        inner_sni_host: host,
-        ech_hpke_cipher: "DHKEM(X25519, HKDF-SHA256), AES-128-GCM",
-        sni_protection_status: "ENCRYPTED_AND_HIDDEN_FROM_MIDDLEBOXES",
-        host_implementation_details: { rfc_standard: "RFC 9001 & ECH Draft", host_architecture: "HPKE encrypts InnerClientHello domain target." }
-      };
-    }
-  }
-
-  static async runFlowControlTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/flow-control-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "FLOW_CONTROL_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        connection_max_data_bytes: 10485760,
-        stream_max_data_bytes: 2097152,
-        data_blocked_events: 0,
-        window_autotuning_gain: "+210% Throughput Efficiency",
-        host_implementation_details: { rfc_standard: "RFC 9000 Section 4", host_architecture: "Auto-tunes MAX_DATA frames when crossing 50% consumption." }
-      };
-    }
-  }
-
-  static async runAckFrequencyTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/ack-frequency-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "ACK_FREQUENCY_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        max_ack_delay_ms: 25,
-        ack_eliciting_threshold: 10,
-        reverse_path_ack_reduction_pct: 78.4,
-        host_implementation_details: { rfc_standard: "ACK Frequency Draft", host_architecture: "Batches ACKs to reduce reverse path bandwidth." }
-      };
-    }
-  }
-
-  static async runStatelessResetTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/stateless-reset-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "STATELESS_RESET_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        reset_token_hex: "0x8a92f01a3c4d5e6f7a8b9c0d1e2f3a4b",
-        trigger_condition: "SERVER_MEMORY_REBOOT_STATE_LOSS",
-        connection_termination_action: "CLEAN_BLIND_TERMINATION_VERIFIED",
-        host_implementation_details: { rfc_standard: "RFC 9000 Section 10.3", host_architecture: "Emits 128-bit Stateless Reset token on memory loss." }
-      };
-    }
-  }
-
-  static async runVersionNegotiationTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/version-negotiation-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "VERSION_NEGOTIATION_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        offered_version: "0x00000002",
-        negotiated_version: "0x00000001",
-        supported_versions: ["0x00000001", "0x6B3343CF"],
-        downgrade_prevention_status: "PROTECTED_VIA_TLS13_CLIENT_SHARES",
-        host_implementation_details: { rfc_standard: "RFC 9368", host_architecture: "Validates version list against downgrade attacks." }
-      };
-    }
-  }
-
-  static async runCryptoReassemblyTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/crypto-reassembly-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "CRYPTO_REASSEMBLY_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        crypto_frame_offsets: [0, 480, 960],
-        flight_arrival_order: "OUT_OF_ORDER",
-        reassembly_buffer_state: "REASSEMBLED_CLEANLY",
-        tls_handshake_phase: "HANDSHAKE_FINISHED",
-        host_implementation_details: { rfc_standard: "RFC 9000 Section 19.6", host_architecture: "Reorders fragmented CRYPTO frames across offset buffers." }
-      };
-    }
-  }
-
-  static async runMultipathQuicTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/multipath-quic-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "MULTIPATH_QUIC_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        active_subflows: [
-          { id: 0, path: "WiFi (192.168.1.50)", rtt_ms: 14.2, status: "PRIMARY" },
-          { id: 1, path: "Cellular 5G (10.142.0.12)", rtt_ms: 32.5, status: "SECONDARY" }
-        ],
-        packet_scheduler_policy: "LOWEST_RTT_FIRST",
-        aggregate_throughput: "142.8 Mbps",
-        host_implementation_details: { rfc_standard: "MP-QUIC Draft", host_architecture: "Schedules stream frames across multiple subflows simultaneously." }
-      };
-    }
-  }
-
-  static async runWebtransportProtocolTest(host, port) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/quic/webtransport-protocol-test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port })
-      });
-      if (res.ok) return await res.json();
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      return {
-        status: "WEBTRANSPORT_TEST_COMPLETE",
-        target: `${host}:${port}`,
-        session_id: "wt_sess_8a92f01a",
-        negotiated_draft: "draft-ietf-webtrans-http3-02",
-        datagram_sessions: "ACTIVE",
-        bidi_streams: 4,
-        uni_streams: 2,
-        host_implementation_details: { rfc_standard: "RFC 9329", host_architecture: "Multiplexes datagrams & uni/bidi streams over HTTP/3 CONNECT." }
-      };
-    }
-  }
+  static runZeroRttTest(host, port) { return this._postAdvQuic('zerortt-test', { host, port }); }
+  static runQPackAnalysis(host, port) { return this._postAdvQuic('qpack-analysis', { host, port }); }
+  static runCongestionBenchmark(host, port, algorithm = 'cubic') { return this._postAdvQuic('congestion-benchmark', { host, port, algorithm }); }
+  static runPmtudEcnProbe(host, port) { return this._postAdvQuic('pmtud-ecn-probe', { host, port }); }
+  static runSpinbitPrivacyAudit(host, port) { return this._postAdvQuic('spinbit-privacy-audit', { host, port }); }
+  static runConnectionMigrationTest(host, port) { return this._postAdvQuic('connection-migration-test', { host, port }); }
+  static runDatagramExtensionTest(host, port) { return this._postAdvQuic('datagram-extension-test', { host, port }); }
+  static runEchPrivacyTest(host, port) { return this._postAdvQuic('ech-privacy-test', { host, port }); }
+  static runFlowControlTest(host, port) { return this._postAdvQuic('flow-control-test', { host, port }); }
+  static runAckFrequencyTest(host, port) { return this._postAdvQuic('ack-frequency-test', { host, port }); }
+  static runStatelessResetTest(host, port) { return this._postAdvQuic('stateless-reset-test', { host, port }); }
+  static runVersionNegotiationTest(host, port) { return this._postAdvQuic('version-negotiation-test', { host, port }); }
+  static runCryptoReassemblyTest(host, port) { return this._postAdvQuic('crypto-reassembly-test', { host, port }); }
+  static runMultipathQuicTest(host, port) { return this._postAdvQuic('multipath-quic-test', { host, port }); }
+  static runWebtransportProtocolTest(host, port) { return this._postAdvQuic('webtransport-protocol-test', { host, port }); }
 
   static async fetchAgentMesh() {
     try {
